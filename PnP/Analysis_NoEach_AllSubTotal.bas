@@ -1,16 +1,15 @@
-Attribute VB_Name = "Module1"
 '====================================================================
-'  ANALYTICS WITH BASELINE ñ SUPPLIERS-ONLY
-'  ï Adds a GRAND-TOTAL section (ìTotal Normalized Bid / Baselineî)
+'  ANALYTICS WITH BASELINE ‚Äì SUPPLIERS-ONLY
+'  ‚Ä¢ Adds a GRAND-TOTAL section (‚ÄúTotal Normalized Bid / Baseline‚Äù)
 '    after all block summaries, separated by one blank row.
-'  ï Saving $ / % for the grand total follow the same rules
+'  ‚Ä¢ Saving $ / % for the grand total follow the same rules
 '    (NA when either value is NA or both are zero).
-'  ï Low-% column is left empty in every summary area.
-'  ï Every variable declared is used exactly once.
+'  ‚Ä¢ Low-% column is left empty in every summary area.
+'  ‚Ä¢ Every variable declared is used exactly once.
 '====================================================================
 Option Explicit
 
-'ññ CONSTANTS (shared by all procedures)
+'‚Äì‚Äì CONSTANTS (shared by all procedures)
 Public Const HDR_ROW         As Long = 1
 Public Const FIRST_DATA_ROW As Long = 3
 Public Const COL_VOL         As Long = 2        ' Volume  (B)
@@ -27,7 +26,7 @@ Sub Analytics_With_Baseline_SuppliersOnly_Final_Compact()
     Application.DisplayAlerts = False
     Application.ErrorCheckingOptions.NumberAsText = False
     
-    'ññ SHEETS
+    '‚Äì‚Äì SHEETS
     Dim wsData As Worksheet, wsPrices As Worksheet, wsA As Worksheet
     Set wsData = ActiveWorkbook.Sheets(1)
     Set wsPrices = ActiveWorkbook.Sheets("Prices")
@@ -41,7 +40,7 @@ Sub Analytics_With_Baseline_SuppliersOnly_Final_Compact()
     wsA.Tab.Color = RGB(128, 0, 128) ' This is a common RGB for purple
     
     
-    'ññ SUPPLIER BOUNDS
+    '‚Äì‚Äì SUPPLIER BOUNDS
     Dim supplierStart As Long: supplierStart = 4          ' Prices D
     Dim supplierEnd   As Long
     supplierEnd = wsData.Cells(HDR_ROW, wsData.Columns.Count).End(xlToLeft).Column - 1
@@ -174,7 +173,7 @@ Private Sub FormulaCell(tgt As Range, f As String, Optional nf As String = "")
     Bordered tgt
 End Sub
 
-'ññ Conditional formatting set
+'‚Äì‚Äì Conditional formatting set
 Private Sub CondFmt(tgt As Range)
     Dim fc As FormatCondition
     With tgt.FormatConditions
