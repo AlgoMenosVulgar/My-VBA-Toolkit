@@ -1,7 +1,6 @@
-Attribute VB_Name = "Module1"
 Option Explicit
 
-'–– CONSTANTS
+'â€“â€“ CONSTANTS
 Public Const HDR_ROW            As Long = 1       ' Header row on Summary
 Public Const COL_VOL            As Long = 2       ' Volume      (B)
 Public Const COL_BASE           As Long = 3       ' Baseline    (C)
@@ -22,7 +21,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
     Dim incumbentStart As Long, incumbentEnd As Long, lowestStart As Long, lowestEnd As Long, lsiStart As Long, lsiEnd As Long
     Dim finalSummaryStartCol As Long, finalSummaryEndCol As Long
 
-    '— EXCEL SETTINGS —
+    'â€” EXCEL SETTINGS â€”
     With Application
         .ScreenUpdating = False
         .DisplayAlerts = False
@@ -30,7 +29,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
     End With
     Application.Calculation = xlCalculationAutomatic
 
-    '— SUMMARY SHEET —
+    'â€” SUMMARY SHEET â€”
     On Error Resume Next: Set wsSummary = wb.Sheets("Summary"): On Error GoTo 0
     If wsSummary Is Nothing Then
         Set wsSummary = wb.Sheets.Add(After:=wsData)
@@ -246,7 +245,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
     Call InsertBlockSummaries(wsSummary, COL_BASE, finalSummaryStartCol, finalSummaryEndCol)
     
     '================================================================
-    ' ONE GLOBAL SUMMARY INSERTION – NORMALIZED TOTAL
+    ' ONE GLOBAL SUMMARY INSERTION â€“ NORMALIZED TOTAL
     '================================================================
     Dim totalRow As Long, c As Long
     With wsSummary
@@ -288,7 +287,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
         Next c
     End With
 
-    '— FINAL FORMATTING —
+    'â€” FINAL FORMATTING â€”
     With wsSummary
         .Columns.AutoFit
         .Cells.HorizontalAlignment = xlCenter
@@ -303,7 +302,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
 End Sub
 
 '====================================================================
-'  BLOCK SUMMARY INSERTION –– ONE-ROW VERSION (now clears formats on blanks)
+'  BLOCK SUMMARY INSERTION â€“â€“ ONE-ROW VERSION (now clears formats on blanks)
 '====================================================================
 Private Sub InsertBlockSummaries(ws As Worksheet, _
                                  baseCol As Long, _
