@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module1"
 Sub CreateFeedbackTab()
 
     Dim wsFeedback As Worksheet, wsPrices As Worksheet
@@ -21,7 +20,7 @@ Sub CreateFeedbackTab()
     End If
 
     '------------------------------------------------------------------
-    ' 2. Localizar la palabra "end"  (marca final)  y delimitar ·rea
+    ' 2. Localizar la palabra "end"  (marca final)  y delimitar √°rea
     '------------------------------------------------------------------
     With wsPrices
         Dim foundCell As Range
@@ -32,7 +31,7 @@ Sub CreateFeedbackTab()
         End If
         endRow = foundCell.Row
         endColumn = .Rows(1).Find(What:="end", LookIn:=xlValues, LookAt:=xlWhole).Column
-        lastSupplierCol = endColumn - 1    ' ˙ltima columna de proveedor
+        lastSupplierCol = endColumn - 1    ' √∫ltima columna de proveedor
     End With
 
     '------------------------------------------------------------------
@@ -65,7 +64,7 @@ Sub CreateFeedbackTab()
         wsFeedback.Columns("A").ColumnWidth, Len("Landsberg Orora") * 1.1)
 
     '------------------------------------------------------------------
-    ' 5. Lista desplegable de proveedores (fila 1, columnas F Ö lastSupplierCol)
+    ' 5. Lista desplegable de proveedores (fila 1, columnas F ‚Ä¶ lastSupplierCol)
     '------------------------------------------------------------------
     Set dropdownRange = wsPrices.Range(wsPrices.Cells(1, firstSupplierCol), wsPrices.Cells(1, lastSupplierCol))
     dropdownValues = ""
@@ -90,10 +89,10 @@ Sub CreateFeedbackTab()
     End With
 
     '------------------------------------------------------------------
-    ' 7. FÛrmulas din·micas (desde la fila 2 hasta fila anterior a ìendî)
+    ' 7. F√≥rmulas din√°micas (desde la fila 2 hasta fila anterior a ‚Äúend‚Äù)
     '------------------------------------------------------------------
     For i = 2 To endRow - 1
-        ' ?óóóóó comprobamos si TODA la fila es ìBlankî
+        ' ?‚Äî‚Äî‚Äî‚Äî‚Äî comprobamos si TODA la fila es ‚ÄúBlank‚Äù
         If WorksheetFunction.CountIf( _
              wsPrices.Range(wsPrices.Cells(i, firstSupplierCol), _
                             wsPrices.Cells(i, lastSupplierCol)), _
@@ -127,7 +126,7 @@ Sub CreateFeedbackTab()
     Next i
 
     '------------------------------------------------------------------
-    ' 8. Formato final de columnas C y D (solo filas con fÛrmulas)
+    ' 8. Formato final de columnas C y D (solo filas con f√≥rmulas)
     '------------------------------------------------------------------
     For i = 2 To endRow - 1
         If wsFeedback.Cells(i, 3).HasFormula Then
@@ -144,7 +143,7 @@ Sub CreateFeedbackTab()
     Next i
 
     '------------------------------------------------------------------
-    ' 9. Formato condicional sobre columna D (solo filas con fÛrmulas)
+    ' 9. Formato condicional sobre columna D (solo filas con f√≥rmulas)
     '------------------------------------------------------------------
     ' Primero borramos cualquier regla previa en D2:D(endRow-1)
     wsFeedback.Range("D2:D" & endRow - 1).FormatConditions.Delete
