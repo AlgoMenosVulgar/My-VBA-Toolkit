@@ -254,22 +254,42 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
         .Cells(totalRow, COL_LABELS).Value = "Normalized Total"
 
         For c = finalSummaryStartCol To finalSummaryEndCol Step COLUMNS_PER_BLOCK
-            With .Cells(totalRow, c + 2)
-                .Formula = "=SUM(" & _
-                              .Parent.Range( _
-                                  .Parent.Cells(FIRST_DATA_ROW, c + 2), _
-                                  .Parent.Cells(totalRow - 2, c + 2) _
-                              ).Address(False, False) & ")"
-                .NumberFormat = "$#,##0.00": Bordered .Cells: CondFmt .Cells
-            End With
-            With .Cells(totalRow, c + 3)
-                .Formula = "=SUM(" & _
-                              .Parent.Range( _
-                                  .Parent.Cells(FIRST_DATA_ROW, c + 3), _
-                                  .Parent.Cells(totalRow - 2, c + 3) _
-                              ).Address(False, False) & ")"
-                .NumberFormat = "$#,##0.00": Bordered .Cells: CondFmt .Cells
-            End With
+            ' — inside your With ws … End With block, and within your c-loop —
+
+        With .Cells(totalRow, c + 2)
+            .Formula = "=SUMIF(" & _
+                          .Parent.Range( _
+                              .Parent.Cells(FIRST_DATA_ROW, "D"), _
+                              .Parent.Cells(totalRow - 2, "D") _
+                          ).Address(False, False) & _
+                          ",""Normalized Sub Total""," & _
+                          .Parent.Range( _
+                              .Parent.Cells(FIRST_DATA_ROW, c + 2), _
+                              .Parent.Cells(totalRow - 2, c + 2) _
+                          ).Address(False, False) & _
+                       ")"
+            .NumberFormat = "$#,##0.00"
+            Bordered .Cells
+            CondFmt .Cells
+        End With
+        
+        With .Cells(totalRow, c + 3)
+            .Formula = "=SUMIF(" & _
+                          .Parent.Range( _
+                              .Parent.Cells(FIRST_DATA_ROW, "D"), _
+                              .Parent.Cells(totalRow - 2, "D") _
+                          ).Address(False, False) & _
+                          ",""Normalized Sub Total""," & _
+                          .Parent.Range( _
+                              .Parent.Cells(FIRST_DATA_ROW, c + 3), _
+                              .Parent.Cells(totalRow - 2, c + 3) _
+                          ).Address(False, False) & _
+                       ")"
+            .NumberFormat = "$#,##0.00"
+            Bordered .Cells
+            CondFmt .Cells
+        End With
+
             With .Cells(totalRow, c + 4)
                 .Formula = "=" & _
                                 .Parent.Cells(totalRow, c + 3).Address(False, False) & _
@@ -410,7 +430,3 @@ Private Sub AddPercent(tgt As Range, bas As Range, prc As Range)
         Call Bordered(.Cells): Call CondFmt(tgt)
     End With
 End Sub
-
-
-
-
