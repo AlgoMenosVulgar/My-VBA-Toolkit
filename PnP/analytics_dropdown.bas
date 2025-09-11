@@ -48,7 +48,7 @@ Sub Analytics_With_Baseline()
     currentRow = 3
 
     ' Determine the range of suppliers
-    supplierStart = 8
+    supplierStart = 5
     lastColumn = wsData.Cells(headerRow, wsData.Columns.Count).End(xlToLeft).Column
     supplierEnd = lastColumn - 1
     lastRow = wsPrices.Cells(wsPrices.Rows.Count, 1).End(xlUp).Row
@@ -70,17 +70,17 @@ Sub Analytics_With_Baseline()
         .Borders.Weight = xlThin
     End With
     
-    ' Insert values from Prices!D while clearing any cell whose source says "Blank"
+    
     Dim rowNum As Long, srcVal As Variant
     
     For rowNum = 3 To lastRow
-        srcVal = wsPrices.Cells(rowNum - 1, "F").Value        'read once, faster than repeated sheet calls volumn column
+        srcVal = wsPrices.Cells(rowNum - 1, "C").Value        'read once, faster than repeated sheet calls volumn column
         
         With wsAnalysis.Cells(rowNum, currentCol)
             If srcVal = "Blank" Then
                 .Clear                                         'remove content + all formatting
             Else
-                .Formula = "=Prices!F" & (rowNum - 1)          'keep live link for every other case
+                .Formula = "=Prices!C" & (rowNum - 1)          'keep live link for every other case
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
@@ -107,13 +107,13 @@ Sub Analytics_With_Baseline()
     
     ' Insert values from Prices!G while clearing any cell whose source says "Blank"
     For rowNum = 3 To lastRow
-        srcVal = wsPrices.Cells(rowNum - 1, "G").Value         'read once, avoid repeated sheet calls
+        srcVal = wsPrices.Cells(rowNum - 1, "D").Value         'read once, avoid repeated sheet calls
         
         With wsAnalysis.Cells(rowNum, currentCol)
             If srcVal = "Blank" Then
                 .Clear                                          'remove content and all formatting
             Else
-                .Formula = "=Prices!G" & (rowNum - 1)           'keep live link for every other case
+                .Formula = "=Prices!D" & (rowNum - 1)           'keep live link for every other case
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
@@ -131,7 +131,7 @@ Sub Analytics_With_Baseline()
     UniqueValues.Add "All", 1 ' Add "All" as the first item
     
     ' Collect unique values from C2:lastRow
-    For Each cell In wsPrices.Range("C2:C" & lastRow)
+    For Each cell In wsPrices.Range("B2:B" & lastRow)
         If Not UniqueValues.exists(cell.Value) Then
             UniqueValues.Add cell.Value, 1
         End If
@@ -337,7 +337,7 @@ Sub Analytics_With_Baseline()
                     "IF('Prices'!" & wsPrices.Cells(j, i).Address(False, True) & "=""NA"",""NA""," & _
                     "IFERROR((SMALL(" & supplierRangeAddress & "," & _
                     "@FREQUENCY(" & supplierRangeAddress & ",0)+" & _
-                    wsAnalysis.Cells(1, (lastColumn - 5) * 5 + 10).Address(False, False) & ")-" & _
+                    wsAnalysis.Cells(1, (lastColumn - 5) * 5 + 11).Address(False, False) & ")-" & _
                     "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ")/" & _
                     "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ",""NA"")))"
                 
@@ -1609,6 +1609,7 @@ Sub Analytics_With_Baseline()
 
 
 End Sub
+
 
 
 
