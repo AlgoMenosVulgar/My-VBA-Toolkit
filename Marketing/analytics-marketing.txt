@@ -1,0 +1,612 @@
+Option Explicit
+
+'===============================
+' Formatting Helpers
+'===============================
+
+' Applies accounting format with two decimals
+Private Sub FormatRecapCell(rng As Range)
+    With rng
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders(xlEdgeLeft).LineStyle = xlContinuous
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+        .Borders(xlEdgeRight).LineStyle = xlContinuous
+        .Borders(xlInsideVertical).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        .NumberFormat = "_($* #,##0.00_);_($* (#,##0.00_);_($* ""-""??_);_(@_)"
+    End With
+End Sub
+
+' Applies plain number format with two decimals
+Private Sub FormatNumberCell(rng As Range)
+    With rng
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders(xlEdgeLeft).LineStyle = xlContinuous
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+        .Borders(xlEdgeRight).LineStyle = xlContinuous
+        .Borders(xlInsideVertical).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        .NumberFormat = "0.00"
+    End With
+End Sub
+
+'===============================
+' Range-Finder Helper
+'===============================
+
+Private Function GetOffsetRange( _
+    sh As Worksheet, _
+    searchPhrase As String, _
+    offsetRows As Long, _
+    offsetCols As Long, _
+    tagPhrase As String _
+) As Range
+    Dim firstCell As Range, startCell As Range, endCell As Range
+    Dim lastRow As Long, firstTagRow As Long, firstSubRow As Long, r As Long, stopRow As Long
+
+    Set firstCell = sh.Cells.Find(What:=searchPhrase, LookAt:=xlWhole)
+    If firstCell Is Nothing Then Exit Function
+    Set startCell = firstCell.Offset(offsetRows, offsetCols)
+    lastRow = sh.Cells.Find(What:="*", After:=sh.Cells(1), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+    firstTagRow = 0: firstSubRow = 0
+    For r = startCell.Row + 1 To lastRow
+        If firstTagRow = 0 And Application.CountIf(sh.Rows(r), "*" & tagPhrase & "*") > 0 Then firstTagRow = r
+        If firstSubRow = 0 And Application.CountIf(sh.Rows(r), "*SUBTOTAL*") > 0 Then firstSubRow = r
+        If firstTagRow > 0 And firstSubRow > 0 Then Exit For
+    Next r
+
+    If firstTagRow > 0 And firstSubRow > 0 Then
+        stopRow = IIf(firstTagRow < firstSubRow, firstTagRow, firstSubRow)
+    ElseIf firstTagRow > 0 Then
+        stopRow = firstTagRow
+    ElseIf firstSubRow > 0 Then
+        stopRow = firstSubRow
+    Else
+        stopRow = startCell.Row
+    End If
+
+    If stopRow > startCell.Row Then
+        Set endCell = sh.Cells(stopRow - 1, startCell.Column)
+    Else
+        Set endCell = startCell
+    End If
+
+    Set GetOffsetRange = sh.Range(startCell, endCell)
+End Function
+
+'===============================
+' Main Import & Summary Routine
+'===============================
+
+Sub ImportWorkbooksFromList_Optimized()
+    Dim wsList As Worksheet, wsRecap As Worksheet, wsFunc As Worksheet
+    Dim lastRow As Long, arrNames As Variant, namesList() As String
+    Dim countNames As Long, i As Long, j As Long, col As Long
+    Dim temp As String, fileName As String, fullPath As String
+    Dim wbImport As Workbook, wsImport As Worksheet, wsNew As Worksheet
+    Dim dictSheets As Object, dictImported As Object, dictMissing As Object, dictSkipped As Object
+    Dim sht As Worksheet, cellFees As Range, cellComm As Range
+    Dim retainerVal As Variant, commissionVal As Variant, hoursVal As Variant, ftesVal As Variant
+    Dim msg As String, sumComp As Double
+    Dim headerRow1 As Long, headerRow2 As Long
+    Dim acctRow As Long, analyticsRow As Long, strategyRow As Long
+    Dim mediaRow As Long, miscRow As Long, creativeRow As Long, totalRow As Long
+    Dim rngHours As Range, rngFees As Range, rngTotal As Range
+
+    With Application
+        .ScreenUpdating = False: .EnableEvents = False: .DisplayAlerts = False: .Calculation = xlCalculationManual
+    End With
+
+    On Error GoTo Cleanup
+
+    Set wsList = ThisWorkbook.Worksheets("Import")
+    lastRow = wsList.Columns("A").Find(What:="end", LookAt:=xlWhole, SearchDirection:=xlNext).Row
+    If lastRow < 2 Then GoTo Cleanup
+    ' Read both file names and tab names
+    '===============================
+    ' Import block – reads workbook names in Col A and tab names in Col B,
+    ' copies each specified tab and renames it to the workbook name
+    '===============================
+    
+    
+    Dim tabsList()  As String
+    
+    ' 1) Read A2:B(end–1)
+    arrNames = wsList.Range("A2:B" & lastRow - 1).Value
+    countNames = UBound(arrNames, 1)
+    ReDim namesList(1 To countNames)
+    ReDim tabsList(1 To countNames)
+    
+    For i = 1 To countNames
+        namesList(i) = CStr(arrNames(i, 1))  ' Col A: base workbook name
+        tabsList(i) = CStr(arrNames(i, 2))   ' Col B: sheet name (or index)
+    Next i
+    
+    ' 2) Prepare dictionaries
+    Set dictSheets = CreateObject("Scripting.Dictionary")
+    Set dictImported = CreateObject("Scripting.Dictionary")
+    Set dictMissing = CreateObject("Scripting.Dictionary")
+    Set dictSkipped = CreateObject("Scripting.Dictionary")
+    For Each sht In ThisWorkbook.Worksheets
+        dictSheets(sht.Name) = True
+    Next sht
+    
+    ' 3) Loop through each entry
+    For i = 1 To countNames
+        fileName = namesList(i)
+        fullPath = ThisWorkbook.Path & "\" & fileName & ".xlsx"
+        
+        If Dir(fullPath) = "" Then
+            dictMissing(fileName) = True
+            
+        ElseIf dictSheets.Exists(fileName) Then
+            dictSkipped(fileName) = True
+            
+        Else
+            Set wbImport = Workbooks.Open(fullPath, ReadOnly:=True, UpdateLinks:=0)
+            
+            ' Try to get the tab (by name or index)
+            On Error Resume Next
+            If IsNumeric(tabsList(i)) Then
+                Set wsImport = wbImport.Worksheets(CInt(tabsList(i)))
+            Else
+                Set wsImport = wbImport.Worksheets(tabsList(i))
+            End If
+            On Error GoTo 0
+            
+            If Not wsImport Is Nothing Then
+                ' Copy that specific sheet
+                wsImport.Copy After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
+                Set wsNew = ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)
+                
+                ' --- RENAME to the workbook name (from Col A) ---
+                wsNew.Name = fileName
+                wsNew.Tab.Color = RGB(230, 230, 250)
+                
+                dictImported(fileName) = True
+                dictSheets(fileName) = True
+            Else
+                dictMissing(fileName & " – Tab: " & tabsList(i)) = True
+            End If
+            
+            wbImport.Close SaveChanges:=False
+            Set wsImport = Nothing
+        End If
+    Next i
+
+
+
+    '-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    '===============================
+    ' Build Cost Summary - Recap
+    '===============================
+    If dictSheets.Exists("Cost Summary – Recap") Then
+        Set wsRecap = ThisWorkbook.Worksheets("Cost Summary – Recap")
+        wsRecap.Cells.Clear
+    Else
+        Set wsRecap = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsRecap.Name = "Cost Summary – Recap"
+        dictSheets("Cost Summary – Recap") = True
+    End If
+    wsRecap.Tab.Color = RGB(128, 0, 128)
+    
+    With wsRecap
+        .Cells(2, 2).Value = "Agency"
+        For i = 1 To countNames: .Cells(2, 2 + i).Value = namesList(i): Next i
+        
+        ' Header formatting
+        With .Range(.Cells(2, 2), .Cells(2, 2 + countNames))
+            .Interior.Color = RGB(255, 165, 0)
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+        
+        ' Row labels
+        With .Range(.Cells(3, 2), .Cells(8, 2))
+            .Interior.Color = RGB(202, 237, 251)
+            .Font.Bold = True
+        End With
+        .Cells(3, 2).Value = "Agency Retainer"
+        .Cells(4, 2).Value = "Agency Commission"
+        .Cells(5, 2).Value = "Total Agency Compensation"
+        .Cells(6, 2).Value = "Total Hours"
+        .Cells(7, 2).Value = "Total FTEs"
+        .Cells(8, 2).Value = "Blended Hourly Rate"
+        
+        ' Fill values as FORMULAS
+        For i = 1 To countNames
+            fileName = namesList(i)
+            Set sht = ThisWorkbook.Worksheets(fileName)
+            
+            ' Retainer, Hours, FTEs from "TOTAL FEES" row
+            Set cellFees = sht.Cells.Find(What:="TOTAL FEES", LookAt:=xlWhole, MatchCase:=False)
+            If Not cellFees Is Nothing Then
+                .Cells(3, 2 + i).Formula = "='" & fileName & "'!" & cellFees.Offset(0, 3).Address(False, False)
+                .Cells(6, 2 + i).Formula = "='" & fileName & "'!" & cellFees.Offset(0, 1).Address(False, False)
+                .Cells(7, 2 + i).Formula = "='" & fileName & "'!" & cellFees.Offset(0, 4).Address(False, False)
+            Else
+                .Cells(3, 2 + i).Value = "Not found"
+                .Cells(6, 2 + i).Value = "Not found"
+                .Cells(7, 2 + i).Value = "Not found"
+            End If
+            
+            ' Commission from "TOTAL COMMISSION COMP" row
+            Set cellComm = sht.Cells.Find(What:="TOTAL COMMISSION COMP", LookAt:=xlWhole, MatchCase:=False)
+            If Not cellComm Is Nothing Then
+                .Cells(4, 2 + i).Formula = "='" & fileName & "'!" & cellComm.Offset(0, 1).Address(False, False)
+            Else
+                .Cells(4, 2 + i).Value = "Not found"
+            End If
+            
+            ' Sum of Retainer + Commission
+            If Not cellFees Is Nothing And Not cellComm Is Nothing Then
+                .Cells(5, 2 + i).Formula = "=SUM(" & _
+                    .Cells(3, 2 + i).Address(False, False) & "," & _
+                    .Cells(4, 2 + i).Address(False, False) & ")"
+            Else
+                .Cells(5, 2 + i).Value = ""
+            End If
+            
+            ' Blended Hourly Rate = TotalComp / TotalHours
+            .Cells(8, 2 + i).Formula = "=IF(" & _
+                .Cells(6, 2 + i).Address(False, False) & "=0,"""",ROUND(" & _
+                .Cells(5, 2 + i).Address(False, False) & "/" & _
+                .Cells(6, 2 + i).Address(False, False) & ",2))"
+            
+            ' Apply formatting
+            FormatRecapCell .Cells(3, 2 + i)
+            FormatRecapCell .Cells(4, 2 + i)
+            FormatRecapCell .Cells(5, 2 + i)
+            FormatRecapCell .Cells(6, 2 + i)
+            FormatNumberCell .Cells(7, 2 + i)
+            FormatNumberCell .Cells(8, 2 + i)
+        Next i
+        
+        ' All borders + autofit
+        With .Range(.Cells(2, 2), .Cells(8, 2 + countNames)).Borders
+            .LineStyle = xlContinuous
+            .Weight = xlThin
+        End With
+        .Columns.AutoFit
+    End With
+
+    '---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     
+    '===============================
+    ' Build "Cost Summary – By Function"
+    '===============================
+    If dictSheets.Exists("Cost Summary – By Function") Then
+        Set wsFunc = ThisWorkbook.Worksheets("Cost Summary – By Function")
+        wsFunc.Cells.Clear
+    Else
+        Set wsFunc = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsFunc.Name = "Cost Summary – By Function"
+        dictSheets("Cost Summary – By Function") = True
+    End If
+    wsFunc.Tab.Color = RGB(0, 128, 128)
+    headerRow1 = 1: headerRow2 = 2
+    
+        ' Header: Agency
+    With wsFunc.Range(wsFunc.Cells(headerRow1, 1), wsFunc.Cells(headerRow2, 1))
+        .Merge
+        .Value = "Agency"
+        With .Interior: .Color = RGB(255, 165, 0): End With
+        .Font.Bold = True
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders(xlEdgeLeft).LineStyle = xlContinuous
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+        .Borders(xlEdgeRight).LineStyle = xlContinuous
+        .Borders(xlInsideVertical).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+    End With
+
+    ' Header: Agency names + Hour/Fee
+    For i = 1 To countNames
+        col = 2 + (i - 1) * 2
+
+        ' Merge name across two columns
+        With wsFunc.Range(wsFunc.Cells(headerRow1, col), wsFunc.Cells(headerRow1, col + 1))
+            .Merge
+            .Value = namesList(i)
+            With .Interior: .Color = RGB(255, 165, 0): End With
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .Borders(xlEdgeLeft).LineStyle = xlContinuous
+            .Borders(xlEdgeTop).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeRight).LineStyle = xlContinuous
+            .Borders(xlInsideVertical).LineStyle = xlContinuous
+            .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        End With
+
+        ' Hour
+        With wsFunc.Cells(headerRow2, col)
+            .Value = "Hour"
+            .Interior.Color = RGB(255, 165, 0)
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .Borders(xlEdgeLeft).LineStyle = xlContinuous
+            .Borders(xlEdgeTop).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeRight).LineStyle = xlContinuous
+            .Borders(xlInsideVertical).LineStyle = xlContinuous
+            .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        End With
+
+        ' Fee
+        With wsFunc.Cells(headerRow2, col + 1)
+            .Value = "Fee"
+            .Interior.Color = RGB(255, 165, 0)
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .Borders(xlEdgeLeft).LineStyle = xlContinuous
+            .Borders(xlEdgeTop).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeRight).LineStyle = xlContinuous
+            .Borders(xlInsideVertical).LineStyle = xlContinuous
+            .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        End With
+    Next i
+
+    
+    ' Row 1: Account Service
+    acctRow = headerRow2 + 1
+    With wsFunc.Cells(acctRow, 1)
+        .Value = "Account Service"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        Set rngHours = GetOffsetRange(sht, "Account Service Titles", 1, 5, "# of")
+        With wsFunc.Cells(acctRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatNumberCell .Cells: .NumberFormat = "0"
+        End With
+        Set rngFees = GetOffsetRange(sht, "Account Service Titles", 1, 7, "Total Fees ")
+        With wsFunc.Cells(acctRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 2: Analytics
+    analyticsRow = acctRow + 1
+    With wsFunc.Cells(analyticsRow, 1)
+        .Value = "Analytics"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        Set rngHours = GetOffsetRange(sht, "Analytics Titles", 1, 5, "# of")
+        With wsFunc.Cells(analyticsRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatNumberCell .Cells: .NumberFormat = "0"
+        End With
+        Set rngFees = GetOffsetRange(sht, "Analytics Titles", 1, 7, "Total Fees ")
+        With wsFunc.Cells(analyticsRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 3: Strategy/Planning
+    strategyRow = analyticsRow + 1
+    With wsFunc.Cells(strategyRow, 1)
+        .Value = "Strategy/Planning"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        Set rngHours = GetOffsetRange(sht, "Strategy/Planning Titles", 1, 5, "# of")
+        With wsFunc.Cells(strategyRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatNumberCell .Cells: .NumberFormat = "0"
+        End With
+        Set rngFees = GetOffsetRange(sht, "Strategy/Planning Titles", 1, 7, "Total Fees ")
+        With wsFunc.Cells(strategyRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 4: Media Investment
+    mediaRow = strategyRow + 1
+    With wsFunc.Cells(mediaRow, 1)
+        .Value = "Media Investment"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        Set rngHours = GetOffsetRange(sht, "Media Investment Titles", 1, 5, "# of")
+        With wsFunc.Cells(mediaRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatNumberCell .Cells: .NumberFormat = "0"
+        End With
+        Set rngFees = GetOffsetRange(sht, "Media Investment Titles", 1, 7, "Total Fees ")
+        With wsFunc.Cells(mediaRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 5: Miscellaneous/Other
+    miscRow = mediaRow + 1
+    With wsFunc.Cells(miscRow, 1)
+        .Value = "Miscellaneous/Other"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        Set rngHours = GetOffsetRange(sht, "Miscellaneous/Other Titles", 1, 5, "# of")
+        With wsFunc.Cells(miscRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            Else
+                .Value = 0
+            End If
+            FormatNumberCell .Cells: .NumberFormat = "0"
+        End With
+        Set rngFees = GetOffsetRange(sht, "Miscellaneous/Other Titles", 1, 7, "Total Fees ")
+        With wsFunc.Cells(miscRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                Set rngTotal = sht.Cells.Find(What:="TOTAL COMMISSION COMP", LookAt:=xlWhole)
+                If Not rngTotal Is Nothing Then
+                    .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & _
+                               ") + '" & sht.Name & "'!" & rngTotal.Offset(0, 1).Address(False, False)
+                Else
+                    .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+                End If
+            Else
+                .Value = 0
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 6: Creative (Force this row to always appear)
+    creativeRow = miscRow + 1
+    With wsFunc.Cells(creativeRow, 1)
+        .Value = "Creative"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    
+    For i = 1 To countNames
+        Set sht = ThisWorkbook.Worksheets(namesList(i))
+        wsFunc.Cells(creativeRow, 2 + (i - 1) * 2).Value = 0
+        wsFunc.Cells(creativeRow, 3 + (i - 1) * 2).Value = 0
+        
+        Set rngHours = GetOffsetRange(sht, "Creative/Production Titles", 1, 5, "# of")
+        Set rngFees = GetOffsetRange(sht, "Creative/Production Titles", 1, 7, "Total Fees ")
+        
+        With wsFunc.Cells(creativeRow, 2 + (i - 1) * 2)
+            If Not rngHours Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngHours.Address(False, False) & ")"
+            End If
+            FormatNumberCell .Cells
+            .NumberFormat = "0"
+        End With
+        
+        With wsFunc.Cells(creativeRow, 3 + (i - 1) * 2)
+            If Not rngFees Is Nothing Then
+                .Formula = "=SUM('" & sht.Name & "'!" & rngFees.Address(False, False) & ")"
+            End If
+            FormatRecapCell .Cells
+        End With
+    Next i
+    
+    ' Row 7: Total (Now guaranteed to appear since Creative row exists)
+    totalRow = creativeRow + 1
+    With wsFunc.Cells(totalRow, 1)
+        .Value = "Total"
+        FormatRecapCell .Cells
+        .Interior.Color = RGB(202, 237, 251)
+        .Font.Bold = True
+    End With
+    
+    For i = 1 To countNames
+        col = 2 + (i - 1) * 2
+        ' Sum Hours
+        wsFunc.Cells(totalRow, col).Formula = _
+            "=SUM(" & wsFunc.Cells(acctRow, col).Address(False, False) & ":" & _
+            wsFunc.Cells(creativeRow, col).Address(False, False) & ")"
+        FormatNumberCell wsFunc.Cells(totalRow, col)
+        wsFunc.Cells(totalRow, col).NumberFormat = "0"
+        
+        ' Sum Fees
+        wsFunc.Cells(totalRow, col + 1).Formula = _
+            "=SUM(" & wsFunc.Cells(acctRow, col + 1).Address(False, False) & ":" & _
+            wsFunc.Cells(creativeRow, col + 1).Address(False, False) & ")"
+        FormatRecapCell wsFunc.Cells(totalRow, col + 1)
+    Next i
+    
+    ' Shift everything by inserting a new first row and first column
+    ' Insert a blank column A and row 1 to shift everything
+    With wsFunc
+        .Columns(1).Insert Shift:=xlToRight
+        .Rows(1).Insert Shift:=xlDown
+    End With
+
+    '--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    
+    ' Apply borders
+    With wsFunc.UsedRange
+        .Borders(xlEdgeLeft).LineStyle = xlContinuous
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+        .Borders(xlEdgeRight).LineStyle = xlContinuous
+        .Borders(xlInsideVertical).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+    End With
+    
+    ' Auto-fit columns
+    wsFunc.Columns.AutoFit
+    '===============================
+
+    If dictImported.Count > 0 Then msg = msg & "Imported: " & Join(dictImported.Keys, vbCrLf) & vbCrLf
+    If dictSkipped.Count > 0 Then msg = msg & "Skipped:  " & Join(dictSkipped.Keys, vbCrLf) & vbCrLf
+    If dictMissing.Count > 0 Then msg = msg & "Missing:  " & Join(dictMissing.Keys, vbCrLf)
+    If msg = "" Then msg = "No actions performed."
+    MsgBox msg, vbInformation, "Import Results"
+
+Cleanup:
+    With Application: .ScreenUpdating = True: .EnableEvents = True: .DisplayAlerts = True: .Calculation = xlCalculationAutomatic: End With
+    On Error GoTo 0
+End Sub
+
+
+

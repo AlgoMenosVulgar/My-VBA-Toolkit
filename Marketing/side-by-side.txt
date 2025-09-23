@@ -1,0 +1,247 @@
+Option Explicit
+
+Sub BuildSideBySide()
+    ' PERFORMANCE TUNING
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    On Error GoTo CleanUp
+
+    Dim wsImport   As Worksheet
+    Dim wsSide     As Worksheet
+    Dim wsTemp     As Worksheet
+    Dim SupplierList() As String
+    Dim DisplayNames As Variant, SearchTerms As Variant
+    Dim PastelColors As Variant, DarkColors As Variant
+    Dim MaxBlockHeight(1 To 6) As Long, RowsCategory() As Long
+    Dim countSuppliers As Long, i As Long, j As Long, SupplierIndex As Long
+    Dim colOffset As Long, headerColor As Long, nameColor As Long
+    Dim headerCell As Range, subCell As Range
+    Dim height As Long, startRow As Long, GrandTotalRow As Long
+    Dim colorIndex As Long, r As Long, c As Long, destRow As Long, srcOffset As Long
+    Dim val As Variant, lastRow As Long, lastCol As Long
+
+    ' 1. Leer y ordenar SupplierList
+    Set wsImport = ThisWorkbook.Worksheets("Import")
+    i = 2
+    Do
+        If LCase(Trim(wsImport.Cells(i, "A").Value)) = "end" Then Exit Do
+        If Len(Trim(wsImport.Cells(i, "A").Value)) > 0 Then
+            countSuppliers = countSuppliers + 1
+            ReDim Preserve SupplierList(1 To countSuppliers)
+            SupplierList(countSuppliers) = wsImport.Cells(i, "A").Value
+        End If
+        i = i + 1
+    Loop
+    For i = 1 To countSuppliers - 1
+        For j = i + 1 To countSuppliers
+            If UCase(SupplierList(i)) > UCase(SupplierList(j)) Then Swap SupplierList(i), SupplierList(j)
+        Next j
+    Next i
+
+    ' 2. Textos, búsquedas y paleta pastel
+    DisplayNames = Array( _
+      "Account Service Titles", _
+      "Strategy and Planning Service Titles", _
+      "Analytics Titles", _
+      "Creative/Production Titles", _
+      "Media Titles", _
+      "Media Billing Titles" _
+    )
+    SearchTerms = Array( _
+      "Account Service Titles", _
+      "Strategy/Planning Titles", _
+      "Analytics Titles", _
+      "Creative/Production Titles", _
+      "Media Investment Titles", _
+      "Miscellaneous/Other Titles" _
+    )
+    PastelColors = Array( _
+      RGB(248, 187, 208), _
+      RGB(255, 218, 185), _
+      RGB(255, 249, 196), _
+      RGB(200, 230, 201), _
+      RGB(179, 229, 252), _
+      RGB(225, 190, 231) _
+    )
+    DarkColors = Array( _
+      RGB(210, 145, 160), _
+      RGB(230, 184, 156), _
+      RGB(230, 226, 148), _
+      RGB(146, 185, 141), _
+      RGB(130, 192, 224), _
+      RGB(181, 138, 190) _
+    )
+
+    ' 3. Medir alturas máximas
+    For i = 1 To 6
+        MaxBlockHeight(i) = 0
+        For SupplierIndex = 1 To countSuppliers
+            Set wsTemp = ThisWorkbook.Worksheets(SupplierList(SupplierIndex))
+            Set headerCell = wsTemp.Cells.Find(SearchTerms(i - 1), LookIn:=xlValues, LookAt:=xlPart)
+            If Not headerCell Is Nothing Then
+                Set subCell = wsTemp.Cells.Find("SUBTOTAL", _
+                              After:=wsTemp.Cells(headerCell.Row + 1, 1), _
+                              LookIn:=xlValues, LookAt:=xlPart)
+                If Not subCell Is Nothing Then
+                    height = subCell.Row - headerCell.Row + 1
+                    If height > MaxBlockHeight(i) Then MaxBlockHeight(i) = height
+                End If
+            End If
+        Next SupplierIndex
+        If MaxBlockHeight(i) = 0 Then MaxBlockHeight(i) = 3
+    Next i
+
+    ' 4. Calcular RowsCategory y GrandTotalRow
+    startRow = 3
+    ReDim RowsCategory(1 To 6)
+    RowsCategory(1) = startRow
+    For i = 2 To 6
+        RowsCategory(i) = RowsCategory(i - 1) + MaxBlockHeight(i - 1) + 1
+    Next i
+    GrandTotalRow = RowsCategory(6) + MaxBlockHeight(6) + 1
+
+    ' 5. Preparar hoja Side-By-Side y color de pestaña
+    On Error Resume Next
+    Set wsSide = ThisWorkbook.Worksheets("Side-By-Side")
+    On Error GoTo CleanUp
+    If wsSide Is Nothing Then
+        Set wsSide = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsSide.Name = "Side-By-Side"
+    Else
+        wsSide.Cells.Clear
+    End If
+    wsSide.Tab.Color = RGB(190, 80, 20)  ' #BE5014
+
+    ' 6. Dibujar bloques, copiar datos y calcular subtotales
+    For SupplierIndex = 1 To countSuppliers
+        colOffset = (SupplierIndex - 1) * 5 + 1
+        colorIndex = (SupplierIndex - 1) Mod 6
+        headerColor = PastelColors(colorIndex)
+        nameColor = DarkColors(colorIndex)
+
+        ' Nombre (merge 5 celdas)
+        With wsSide.Range(wsSide.Cells(1, colOffset), wsSide.Cells(1, colOffset + 4))
+            .Merge
+            .Value = SupplierList(SupplierIndex)
+            .Interior.Color = nameColor
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .Borders.LineStyle = xlContinuous
+        End With
+
+        Set wsTemp = ThisWorkbook.Worksheets(SupplierList(SupplierIndex))
+        For i = 1 To 6
+            ' Encabezados
+            With wsSide.Range(wsSide.Cells(RowsCategory(i), colOffset), _
+                              wsSide.Cells(RowsCategory(i), colOffset + 4))
+                .Interior.Color = headerColor
+                .Font.Bold = True
+                .Borders.LineStyle = xlContinuous
+                .Cells(1, 1).Value = DisplayNames(i - 1)
+                .Cells(1, 2).Value = "# of Hours"
+                .Cells(1, 3).Value = "Hourly Rate"
+                .Cells(1, 4).Value = "Total Fees"
+                .Cells(1, 5).Value = "%FTE (1800 Annual)"
+            End With
+
+            ' Copiar datos
+            Set headerCell = wsTemp.Cells.Find(SearchTerms(i - 1), LookIn:=xlValues, LookAt:=xlPart)
+            If Not headerCell Is Nothing Then
+                Set subCell = wsTemp.Cells.Find("SUBTOTAL", After:=wsTemp.Cells(headerCell.Row + 1, 1), _
+                                                LookIn:=xlValues, LookAt:=xlPart)
+                If Not subCell Is Nothing Then
+                    For r = headerCell.Row + 1 To subCell.Row - 1
+                        destRow = RowsCategory(i) + (r - headerCell.Row)
+                        For c = 0 To 4
+                            srcOffset = IIf(c = 0, 0, c + 4)
+                            With wsSide.Cells(destRow, colOffset + c)
+                                .Formula = "='" & SupplierList(SupplierIndex) & "'!" & _
+                                           wsTemp.Cells(r, headerCell.Column + srcOffset).Address(False, False)
+                                .Borders.LineStyle = xlContinuous
+                                ' STEP 7: Accounting format on Hourly Rate & Total Fees only
+                                If c = 2 Or c = 3 Then
+                                    .NumberFormat = "_($* #,##0.00_);_($* (#,##0.00_);_($* ""-""_);_(@_)"
+                                End If
+                            End With
+                        Next c
+                    Next r
+                    ' Subtotal row
+                    Dim stRow As Long: stRow = RowsCategory(i) + MaxBlockHeight(i) - 1
+                    With wsSide.Range(wsSide.Cells(stRow, colOffset), wsSide.Cells(stRow, colOffset + 4))
+                        .Interior.Color = RGB(215, 215, 215)
+                        .Font.Bold = True
+                        .Borders.LineStyle = xlContinuous
+                    End With
+                    For c = 1 To 4
+                        wsSide.Cells(stRow, colOffset + c).Formula = _
+                            "=SUM(" & _
+                            wsSide.Cells(RowsCategory(i) + 1, colOffset + c).Address(False, False) & ":" & _
+                            wsSide.Cells(stRow - 1, colOffset + c).Address(False, False) & _
+                        ")"
+                    Next c
+                    wsSide.Cells(stRow, colOffset).Value = "SUBTOTAL"
+                End If
+            End If
+        Next i
+
+        ' GRAND TOTAL Retainer
+        With wsSide.Range(wsSide.Cells(GrandTotalRow, colOffset), wsSide.Cells(GrandTotalRow, colOffset + 4))
+            .Value = "GRAND TOTAL Retainer"
+            .Font.Bold = True
+            .Interior.Color = RGB(200, 200, 200)
+            .Borders.LineStyle = xlContinuous
+        End With
+        For c = 1 To 4
+            Dim sumRange As String: sumRange = ""
+            For i = 1 To 6
+                Dim rowST As Long: rowST = RowsCategory(i) + MaxBlockHeight(i) - 1
+                sumRange = sumRange & wsSide.Cells(rowST, colOffset + c).Address(False, False)
+                If i < 6 Then sumRange = sumRange & ","
+            Next i
+            wsSide.Cells(GrandTotalRow, colOffset + c).Formula = "=SUM(" & sumRange & ")"
+        Next c
+    Next SupplierIndex
+
+    ' 7. Limpiar filas vacías o con ceros, AutoFit y bordes
+    With wsSide
+        lastRow = .Cells(.Rows.Count, 1).End(xlUp).Row
+        lastCol = .Cells(1, .Columns.Count).End(xlToLeft).Column
+        For r = lastRow To 2 Step -1
+            Dim deleteRow As Boolean: deleteRow = True
+            For c = 1 To lastCol
+                val = .Cells(r, c).Value
+                If Not (IsEmpty(val) Or (IsNumeric(val) And val = 0)) Then deleteRow = False: Exit For
+            Next c
+            If deleteRow Then .Rows(r).Delete
+        Next r
+        .Columns.AutoFit
+        With .UsedRange.Borders
+            .LineStyle = xlContinuous
+        End With
+    End With
+
+    ' 8. Wrap all formulas in IF(...=0,"",...)
+    Dim cell As Range, origF As String, fText As String
+    For Each cell In wsSide.UsedRange
+        If cell.HasFormula Then
+            origF = cell.Formula
+            fText = Mid(origF, 2)
+            cell.Formula = "=IF(" & fText & "=0,""""," & fText & ")"
+        End If
+    Next cell
+
+CleanUp:
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+End Sub
+
+Private Sub Swap(ByRef a As String, ByRef b As String)
+    Dim t As String: t = a: a = b: b = t
+End Sub
+
+
+
+
