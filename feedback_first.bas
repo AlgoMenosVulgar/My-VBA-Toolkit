@@ -119,19 +119,20 @@ Sub CreateFeedbackTab()
             Dim pctExpr As String
             pctExpr = "ABS(100*(" & minimumFormula & "-C" & i & ")/C" & i & ")"
             
-            ' New formula with the 90–95% cap and +5% band
+            ' New formula: band size uses B$2; if pct > 90, force "90 - (90+B$2)%"
             wsFeedback.Cells(i, 4).Formula = _
                 "=IF(OR(" & minimumFormula & "=0, C" & i & "=""" & "NA" & """), ""NA"", " & _
                 "IF(ISNUMBER((" & minimumFormula & "-C" & i & ")/C" & i & "), " & _
                     "IF((C" & i & "-" & minimumFormula & ")<=0, ""Good"", " & _
-                        "IF(" & pctExpr & ">90, ""90 - 95%"", " & _
-                            "CEILING(" & pctExpr & ",5) & "" - "" & (CEILING(" & pctExpr & ",5)+5) & ""%"" " & _
+                        "IF(" & pctExpr & ">90, ""90 - "" & (90+B$2) & ""%"", " & _
+                            "CEILING(" & pctExpr & ", B$2) & "" - "" & (CEILING(" & pctExpr & ", B$2)+B$2) & ""%"" " & _
                         ")" & _
                     "), " & _
                     "(" & minimumFormula & "-C" & i & ")/C" & i & _
                 "))"
             
             wsFeedback.Cells(i, 4).HorizontalAlignment = xlCenter
+
 
 
         End If
