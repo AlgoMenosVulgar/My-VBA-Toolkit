@@ -115,24 +115,30 @@ Sub CreateFeedbackTab()
                              wsPrices.Range(wsPrices.Cells(i, firstSupplierCol), _
                                             wsPrices.Cells(i, lastSupplierCol)).Address(False, False) & ")"
             
+            ' Where is B$2? If it's on wsFeedback, use this:
+            Dim stepRef As String
+            stepRef = "'" & wsFeedback.Name & "'!B$2"   ' handles spaces in sheet name
+            
             ' % difference expression reused
             Dim pctExpr As String
             pctExpr = "ABS(100*(" & minimumFormula & "-C" & i & ")/C" & i & ")"
             
-            ' New formula: band size uses B$2; if pct > 90, force "90 - (90+B$2)%"
+            ' Write the formula using stepRef instead of 5
             wsFeedback.Cells(i, 4).Formula = _
                 "=IF(OR(" & minimumFormula & "=0, C" & i & "=""" & "NA" & """), ""NA"", " & _
                 "IF(ISNUMBER((" & minimumFormula & "-C" & i & ")/C" & i & "), " & _
                     "IF((C" & i & "-" & minimumFormula & ")<=0, ""Good"", " & _
-                        "IF(" & pctExpr & ">90, ""90 - "" & (90+B$2) & ""%"", " & _
-                            "CEILING(" & pctExpr & ", B$2) & "" - "" & (CEILING(" & pctExpr & ", B$2)+B$2) & ""%"" " & _
+                        "IF(" & pctExpr & ">90, ""90 - "" & (90+" & stepRef & ") & ""%"", " & _
+                            "CEILING(" & pctExpr & ", " & stepRef & ") & "" - "" & (CEILING(" & pctExpr & ", " & stepRef & ")+" & stepRef & ") & ""%"" " & _
                         ")" & _
                     "), " & _
                     "(" & minimumFormula & "-C" & i & ")/C" & i & _
                 "))"
             
             wsFeedback.Cells(i, 4).HorizontalAlignment = xlCenter
-
+            
+            ' Optional: print what we actually wrote (debug)
+            Debug.Print wsFeedback.Cells(i, 4).Formula
 
 
         End If
