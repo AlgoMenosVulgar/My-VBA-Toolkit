@@ -1,6 +1,6 @@
 Option Explicit
 
-Sub ApplyPctToLower_FromImport_FinalPolished()
+Sub ApplyPctToLower_FromImport_NoBordersOnBlank()
     Const PRICES_SHEET   As String = "Prices"
     Const IMPORT_SHEET   As String = "Import"
     Const HEADER_TXT     As String = "% to Lower"
@@ -10,7 +10,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
     Dim wsPrices As Worksheet: Set wsPrices = wb.Sheets(PRICES_SHEET)
     Dim wsImport As Worksheet: Set wsImport = wb.Sheets(IMPORT_SHEET)
 
-    ' === Detect supplier range ===
+    ' === Detect supplier columns ===
     Dim firstSupCol As Long: firstSupCol = 4
     Dim endColCell As Range, lastSupCol As Long
     Set endColCell = wsPrices.Rows(1).Find("end", , xlValues, xlWhole)
@@ -32,7 +32,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
     Dim numRowsPrices As Long: numRowsPrices = finalRowPrices - initRowPrices + 1
     If numRowsPrices <= 0 Then Exit Sub
 
-    ' === Compute minima per row ===
+    ' === Compute minima ===
     Dim minRow() As Double: ReDim minRow(1 To numRowsPrices)
     Dim r As Long, c As Long, v As Variant, mn As Double, found As Boolean
     For r = 1 To numRowsPrices
@@ -46,7 +46,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
         minRow(r) = IIf(found, mn, 0)
     Next r
 
-    ' === Supplier names from Import row 1 ===
+    ' === Supplier list from Import row 1 ===
     Dim supNames As Collection: Set supNames = New Collection
     c = 2
     Do While Len(Trim$(wsImport.Cells(1, c).Value)) > 0
@@ -55,7 +55,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
         c = c + 1
     Loop
 
-    ' === Destination placement ===
+    ' === Destination coordinates ===
     Dim baseColLetter As String, pasteCol As Long, pasteStart As Long, pasteEnd As Long
     baseColLetter = Trim$(CStr(wsImport.Range("I2").Value))
     If Len(baseColLetter) = 0 Then baseColLetter = "R"
@@ -65,7 +65,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
     Dim pasteNumRows As Long: pasteNumRows = pasteEnd - pasteStart + 1
     If pasteNumRows <= 0 Then Exit Sub
 
-    ' === Map supplier columns ===
+    ' === Map supplier names to columns ===
     Dim priceCol As Object: Set priceCol = CreateObject("Scripting.Dictionary")
     For c = firstSupCol To lastSupCol
         Dim name As String: name = Trim$(CStr(wsPrices.Cells(1, c).Value))
@@ -84,7 +84,7 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
         On Error Resume Next: Set wsSup = wb.Sheets(name): On Error GoTo 0
         If wsSup Is Nothing Then GoTo NextSupplier
 
-        ' === Header one row above Import pasteStart ===
+        ' --- Header ---
         Dim headerCell As Range
         Set headerCell = wsSup.Cells(pasteStart - 1, pasteCol)
         headerCell.Value = HEADER_TXT
@@ -93,11 +93,12 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
         headerCell.Font.Bold = True
         headerCell.HorizontalAlignment = xlCenter
 
-        ' === Compute labels ===
+        ' --- Compute labels ---
         For r = 1 To numRowsPrices
             v = wsPrices.Cells(initRowPrices + r - 1, priceCol(name)).Value
-            label = "NA"
-            If IsNumeric(v) And v > 0 And minRow(r) > 0 Then
+            If Trim$(v) = "Blank" Then
+                arr(r, 1) = vbNullString
+            ElseIf IsNumeric(v) And v > 0 And minRow(r) > 0 Then
                 If v <= minRow(r) Then
                     label = "Good"
                 Else
@@ -109,25 +110,37 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
                         label = base & " - " & base + STEP_PCT & "%"
                     End If
                 End If
+                arr(r, 1) = label
+            Else
+                arr(r, 1) = "NA"
             End If
-            arr(r, 1) = label
         Next r
 
-        ' === Write directly into Import-defined range ===
+        ' --- Paste array ---
         Dim rng As Range
         Set rng = wsSup.Range(wsSup.Cells(pasteStart, pasteCol), wsSup.Cells(pasteEnd, pasteCol))
         rng.Value = arr
 
-        ' === Borders and centering ===
-        With wsSup.Range(headerCell, rng)
-            .Borders.LineStyle = xlContinuous
-            .Borders.Weight = xlThin
-            .Borders.Color = RGB(0, 0, 0)
-            .HorizontalAlignment = xlCenter
-            .VerticalAlignment = xlCenter
-        End With
+        ' --- Clear any “Blank” cells fully ---
+        For r = 1 To numRowsPrices
+            If Trim$(wsPrices.Cells(initRowPrices + r - 1, priceCol(name)).Value) = "Blank" Then
+                With wsSup.Cells(pasteStart + r - 1, pasteCol)
+                    .ClearFormats
+                    .ClearContents
+                End With
+            End If
+        Next r
 
-        ' === Conditional formatting (Feedback colors) ===
+        ' --- Apply borders + alignment only to non-blank cells ---
+        Dim dataRng As Range
+        Set dataRng = wsSup.Range(headerCell, rng)
+        dataRng.Borders.LineStyle = xlContinuous
+        dataRng.Borders.Weight = xlThin
+        dataRng.Borders.Color = RGB(0, 0, 0)
+        dataRng.HorizontalAlignment = xlCenter
+        dataRng.VerticalAlignment = xlCenter
+
+        ' --- Conditional Formatting (Feedback-style) ---
         rng.FormatConditions.Delete
         Dim cf1 As FormatCondition, cf2 As FormatCondition, cf3 As FormatCondition
         Set cf1 = rng.FormatConditions.Add(xlCellValue, xlEqual, "=""NA""")
@@ -140,7 +153,14 @@ Sub ApplyPctToLower_FromImport_FinalPolished()
         cf3.Interior.Color = RGB(255, 199, 206)
         cf3.Font.Color = RGB(156, 0, 6)
 
-        ' === AutoFit column width ===
+        ' --- Re-clear formatting again after conditional rules (guaranteed clean) ---
+        For r = 1 To numRowsPrices
+            If Trim$(wsPrices.Cells(initRowPrices + r - 1, priceCol(name)).Value) = "Blank" Then
+                wsSup.Cells(pasteStart + r - 1, pasteCol).FormatConditions.Delete
+                wsSup.Cells(pasteStart + r - 1, pasteCol).ClearFormats
+            End If
+        Next r
+
         wsSup.Columns(pasteCol).AutoFit
 
 NextSupplier:
