@@ -1,0 +1,189 @@
+Option Explicit
+
+' -------------------------------
+' Entry point: iterate project rows in "Import"
+' -------------------------------
+Sub FindEndRowAndIterate()
+    Dim ws As Worksheet
+    Dim searchRange As Range
+    Dim foundCell As Range
+    Dim LastRowEnd As Long
+    Dim ProjectRow As Long
+
+    On Error GoTo ImportSheetNotFound
+    Set ws = ThisWorkbook.Sheets("Import")
+    On Error GoTo 0
+
+    Set searchRange = ws.Range("A1:A" & ws.Cells(ws.Rows.Count, 1).End(xlUp).Row)
+    Set foundCell = searchRange.Find(What:="end", LookIn:=xlValues, LookAt:=xlWhole)
+
+    If Not foundCell Is Nothing Then
+        LastRowEnd = foundCell.Row
+        For ProjectRow = 2 To LastRowEnd - 1
+            CopyTabsFromMultipleWorkbooks_InPlace ProjectRow
+        Next ProjectRow
+        MsgBox "Macro execution complete for all project rows.", vbInformation, "Process Finished"
+    Else
+        MsgBox "The marker 'end' was not found in column A of the 'Import' sheet.", vbExclamation
+    End If
+
+    Exit Sub
+
+ImportSheetNotFound:
+    MsgBox "The 'Import' sheet was not found in this workbook.", vbCritical
+End Sub
+
+' -------------------------------
+' Import tabs according to "Import" sheet
+' - No file picker
+' - Ask ONLY if destination tab already exists
+' - Do NOT create the 'Prices' tab
+' -------------------------------
+Sub CopyTabsFromMultipleWorkbooks_InPlace(ProjectRow As Long)
+    Dim BaseFolderPath As String, FileName As String, sheetName As String
+    Dim DestinationName As String, CurrentWorkbook As Workbook, SourceWorkbook As Workbook
+    Dim ws As Worksheet, wsTab As Worksheet, existingSheet As Worksheet
+    Dim findEnd As Range, ImportSheets As Variant
+    Dim EndColumn As Long, i As Long
+    Dim Links As Variant, Lnk As Variant
+    Dim fpath As String
+    Dim resp As VbMsgBoxResult
+
+    ' App settings to minimize prompts and speed up
+    With Application
+        .ScreenUpdating = False
+        .DisplayAlerts = False
+        .CutCopyMode = False
+        .ErrorCheckingOptions.NumberAsText = False
+        .AskToUpdateLinks = False
+        .Calculation = xlCalculationAutomatic
+    End With
+
+    BaseFolderPath = ThisWorkbook.Path & Application.PathSeparator
+    Set CurrentWorkbook = ThisWorkbook
+
+    ' Find the "end" header in row 1 to delimit the header range
+    With ThisWorkbook.Sheets("Import").Rows(1)
+        Set findEnd = .Find(What:="end", LookAt:=xlWhole, MatchCase:=False)
+    End With
+    If findEnd Is Nothing Then
+        MsgBox "'end' column not found in row 1 of 'Import'.", vbExclamation
+        GoTo Cleanup
+    End If
+    EndColumn = findEnd.Column
+
+    ' Read header names to know destination sheet names
+    With ThisWorkbook.Sheets("Import")
+        ImportSheets = .Range(.Cells(1, 1), .Cells(1, EndColumn - 1)).Value
+    End With
+
+    ' Loop columns (each header = destination sheet name; cell at ProjectRow,row = source tab name)
+    For i = 1 To UBound(ImportSheets, 2)
+        FileName = ImportSheets(1, i) & ".xlsx"                 ' source workbook file
+        sheetName = ThisWorkbook.Sheets("Import").Cells(ProjectRow, i).Value   ' source sheet/tab name
+
+        ' Skip explicit NA or blank
+        If Len(Trim(sheetName)) = 0 Or UCase$(Trim$(sheetName)) = "NA" Then
+            GoTo NextCol
+        End If
+
+        DestinationName = ImportSheets(1, i)                     ' destination tab name in this WB
+        fpath = BaseFolderPath & FileName
+
+        ' If destination tab already exists, ask whether to replace; otherwise import silently
+        Set existingSheet = Nothing
+        On Error Resume Next
+        Set existingSheet = CurrentWorkbook.Sheets(DestinationName)
+        On Error GoTo 0
+
+        If Not existingSheet Is Nothing Then
+            resp = MsgBox("Sheet '" & DestinationName & "' already exists." & vbCrLf & _
+                          "Replace it with '" & sheetName & "' from '" & FileName & "'?", _
+                          vbYesNo + vbQuestion, "Replace existing sheet?")
+            If resp = vbNo Then GoTo NextCol
+
+            ' Delete existing destination sheet (confirmed)
+            Application.DisplayAlerts = False
+            existingSheet.Delete
+            Application.DisplayAlerts = True
+        End If
+
+        ' Ensure file exists; avoid any file-open picker
+        If Dir$(fpath, vbNormal) = "" Then
+            MsgBox "File not found: " & fpath, vbExclamation
+            GoTo NextCol
+        End If
+
+        ' Open source workbook without link/update prompts
+        Set SourceWorkbook = Nothing
+        On Error Resume Next
+        Set SourceWorkbook = Workbooks.Open(Filename:=fpath, ReadOnly:=True, UpdateLinks:=False, Notify:=False, _
+                                            IgnoreReadOnlyRecommended:=True)
+        On Error GoTo 0
+        If SourceWorkbook Is Nothing Then
+            MsgBox "Could not open: " & fpath, vbExclamation
+            GoTo NextCol
+        End If
+
+        ' Get the source sheet
+        Set ws = Nothing
+        On Error Resume Next
+        Set ws = SourceWorkbook.Sheets(sheetName)
+        On Error GoTo 0
+        If ws Is Nothing Then
+            MsgBox "Sheet '" & sheetName & "' not found in '" & FileName & "'.", vbExclamation
+            GoTo CloseSrc
+        End If
+
+        ' Copy the sheet into this workbook and rename as destination
+        ws.Copy After:=CurrentWorkbook.Sheets(CurrentWorkbook.Sheets.Count)
+        CurrentWorkbook.Sheets(CurrentWorkbook.Sheets.Count).Name = DestinationName
+
+CloseSrc:
+        On Error Resume Next
+        SourceWorkbook.Close SaveChanges:=False
+        On Error GoTo 0
+
+NextCol:
+    Next i
+
+    ' Optional: break any external links that may have been introduced
+    Links = CurrentWorkbook.LinkSources(xlLinkTypeExcelLinks)
+    If Not IsEmpty(Links) Then
+        For Each Lnk In Links
+            On Error Resume Next
+            CurrentWorkbook.BreakLink Name:=Lnk, Type:=xlLinkTypeExcelLinks
+            On Error GoTo 0
+        Next Lnk
+    End If
+
+    Links = CurrentWorkbook.LinkSources(xlOLELinks)
+    If Not IsEmpty(Links) Then
+        For Each Lnk In Links
+            On Error Resume Next
+            CurrentWorkbook.BreakLink Name:=Lnk, Type:=xlLinkTypeExcelLinks
+            On Error GoTo 0
+        Next Lnk
+    End If
+
+    ' Clean placeholder Sheet1 if it's empty
+    On Error Resume Next
+    Set wsTab = CurrentWorkbook.Sheets("Sheet1")
+    If Not wsTab Is Nothing Then
+        If wsTab.UsedRange.Cells.Count = 1 And Len(wsTab.Cells(1, 1).Value) = 0 Then
+            Application.DisplayAlerts = False
+            wsTab.Delete
+            Application.DisplayAlerts = True
+        End If
+    End If
+    On Error GoTo 0
+
+Cleanup:
+    With Application
+        .CalculateFullRebuild
+        .ScreenUpdating = True
+        .DisplayAlerts = True
+        .ErrorCheckingOptions.NumberAsText = True
+        .CutCopyMode = False
+    End With
+End Sub
