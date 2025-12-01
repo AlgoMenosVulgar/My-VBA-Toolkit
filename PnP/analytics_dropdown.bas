@@ -225,8 +225,9 @@ Sub Analytics_With_Baseline()
                 'formulaString = "=IF(OR(" & dropdownRange.Address(False, False) & "=""All""," & dropdownRange.Address(False, False) & "=Prices!C" & j & "), 'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ", ""NA"")"
                 formulaString = "=IF(OR(" & _
                 "COUNTIF(" & dropdownRange.Address(False, False) & ", ""All"")>0," & _
-                "COUNTIF(" & dropdownRange.Address(False, False) & ", Prices!C" & j & ")>0)," & _
+                "COUNTIF(" & dropdownRange.Address(False, False) & ", Prices!B" & j & ")>0)," & _
                 "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ", ""NA"")"
+
 
                 With formulaCell
                     .Formula = formulaString
@@ -1609,6 +1610,7 @@ Sub Analytics_With_Baseline()
 
 
 End Sub
+
 
 
 
