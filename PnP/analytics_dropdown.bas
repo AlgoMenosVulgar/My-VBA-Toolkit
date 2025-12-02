@@ -903,62 +903,91 @@ Sub Analytics_With_Baseline()
    '--- End
 
 
-   ' Add "Lowest" header
-    Set supplierHeaderRange = wsAnalysis.Range(wsAnalysis.Cells(headerRow, currentCol + 1), wsAnalysis.Cells(headerRow, currentCol + 4))
-       
-    supplierHeaderRange.Merge
-    supplierHeaderRange.Value = "Lowest"
-    supplierHeaderRange.HorizontalAlignment = xlCenter
-    supplierHeaderRange.VerticalAlignment = xlCenter
-    supplierHeaderRange.Interior.Color = RGB(255, 192, 0)
-    supplierHeaderRange.Borders.Weight = xlThin
+   ' ------------------------------------------------ Lowestt
+   
+    ' -------------------------------------------------
+    ' LOWEST SECTION (updated with Unit Price + Total)
+    ' -------------------------------------------------
     
-    ' Add dropdown list with values 1, 2, 3, 4, 5
-    'Dim dropdownRange As Range
-    Set dropdownRange = wsAnalysis.Range(wsAnalysis.Cells(headerRow, currentCol), wsAnalysis.Cells(headerRow, currentCol)) ' Adjust range to where you want the dropdown
+    ' Add "Lowest" header (covers 5 data columns to the right of the dropdown)
+    ' Layout:
+    '   [currentCol]       = dropdown (1..5)
+    '   [currentCol+1..+5] = merged "Lowest"
+    Set supplierHeaderRange = wsAnalysis.Range( _
+        wsAnalysis.Cells(headerRow, currentCol + 1), _
+        wsAnalysis.Cells(headerRow, currentCol + 5) _
+    )
+    
+    With supplierHeaderRange
+        .Merge
+        .Value = "Lowest"
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Interior.Color = RGB(255, 192, 0)
+        .Borders.Weight = xlThin
+    End With
+    
+    ' Dropdown (rank 1–5) in the cell to the left of "Lowest"
+    Set dropdownRange = wsAnalysis.Range( _
+        wsAnalysis.Cells(headerRow, currentCol), _
+        wsAnalysis.Cells(headerRow, currentCol) _
+    )
     
     With dropdownRange
-    ' Apply data validation
-    With .Validation
-        .Delete ' Remove any existing validation
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
-            xlBetween, Formula1:="1,2,3,4,5" ' Add values 1, 2, 3, 4, 5 in the dropdown
-        .IgnoreBlank = True
-        .InCellDropdown = True
-        .ShowInput = True
-        .ShowError = True
-    End With
-
-    ' Center values horizontally and vertically
-    .HorizontalAlignment = xlCenter
-    .VerticalAlignment = xlCenter
-
-    ' Add borders to all sides
-    .Borders.LineStyle = xlContinuous
-    .Borders.Weight = xlThin
-
-    ' Apply background fill color (RGB: 202, 237, 251)
-    .Interior.Color = RGB(202, 237, 251)
+        With .Validation
+            .Delete
+            .Add Type:=xlValidateList, _
+                 AlertStyle:=xlValidAlertStop, _
+                 Operator:=xlBetween, _
+                 Formula1:="1,2,3,4,5"
+            .IgnoreBlank = True
+            .InCellDropdown = True
+            .ShowInput = True
+            .ShowError = True
+        End With
+    
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+        .Borders.Weight = xlThin
+        .Interior.Color = RGB(202, 237, 251)
     End With
     
-    ' Add sub-headers for "Lowest"
-    Set subHeaderRange = wsAnalysis.Range(wsAnalysis.Cells(headerRow + 1, currentCol), wsAnalysis.Cells(headerRow + 1, currentCol + 4))
+    ' Sub-headers for "Lowest"
+    '   currentCol      = Supplier
+    '   currentCol + 1  = Unit Price   (k-th lowest unit)
+    '   currentCol + 2  = Total Price  (Unit * Volume)
+    '   currentCol + 3  = Baseline     (Baseline unit * Volume)
+    '   currentCol + 4  = Savings $
+    '   currentCol + 5  = Savings %
+    Set subHeaderRange = wsAnalysis.Range( _
+        wsAnalysis.Cells(headerRow + 1, currentCol), _
+        wsAnalysis.Cells(headerRow + 1, currentCol + 5) _
+    )
+    
     subHeaderRange.Cells(1, 1).Value = "Supplier"
-    subHeaderRange.Cells(1, 2).Value = "Total Price"
-    subHeaderRange.Cells(1, 3).Value = "Baseline"
-    subHeaderRange.Cells(1, 4).Value = "Savings $"
-    subHeaderRange.Cells(1, 5).Value = "Savings %"
-    subHeaderRange.Interior.Color = RGB(202, 237, 251)
-    subHeaderRange.Borders.Weight = xlThin
-    subHeaderRange.HorizontalAlignment = xlCenter
-    subHeaderRange.VerticalAlignment = xlCenter
+    subHeaderRange.Cells(1, 2).Value = "Unit Price"
+    subHeaderRange.Cells(1, 3).Value = "Total Price"
+    subHeaderRange.Cells(1, 4).Value = "Baseline"
+    subHeaderRange.Cells(1, 5).Value = "Savings $"
+    subHeaderRange.Cells(1, 6).Value = "Savings %"
     
-    ' Calculate the lowest price per supplier and add formulas
+    With subHeaderRange
+        .Interior.Color = RGB(202, 237, 251)
+        .Borders.Weight = xlThin
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+    End With
+    
+    ' -------------------------------------------------
+    ' Content rows
+    ' -------------------------------------------------
     currentRow = headerRow + 2
+    
     For j = 2 To lastRow
         If wsPrices.Cells(j, 1).Value = "end" Then Exit For
-        
-        ' Check if the row contains "Blank"
+    
+        ' Check if the row contains "Blank" in any supplier column
         containsBlank = False
         For Each cell In wsPrices.Range(wsPrices.Cells(j, supplierStart), wsPrices.Cells(j, supplierEnd))
             If cell.Value = "Blank" Then
@@ -966,189 +995,188 @@ Sub Analytics_With_Baseline()
                 Exit For
             End If
         Next cell
-        
+    
         If containsBlank Then
             ' Clear the row block in Analysis if "Blank" is found
-            wsAnalysis.Range(wsAnalysis.Cells(currentRow, currentCol), wsAnalysis.Cells(currentRow, currentCol + 3)).Clear
+            wsAnalysis.Range( _
+                wsAnalysis.Cells(currentRow, currentCol), _
+                wsAnalysis.Cells(currentRow, currentCol + 5) _
+            ).Clear
         Else
-            ' Calculate Supplier (Supplier Column)
-            Set formulaCell = wsAnalysis.Cells(currentRow, currentCol)
-            formulaCell.Formula = _
-                "=IF(" & wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & "=""Not Found"", " & _
-                """Not Found"", INDEX(Prices!$" & Split(wsPrices.Cells(1, supplierStart).Address(True, True), "$")(1) & _
-                "$1:$" & Split(wsPrices.Cells(1, supplierEnd).Address(True, True), "$")(1) & _
-                "$1, MATCH(" & wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & ", " & _
-                "Prices!" & wsPrices.Range(wsPrices.Cells(j, supplierStart), wsPrices.Cells(j, supplierEnd)).Address(False, False) & ", 0)))"
-            
-            formulaCell.HorizontalAlignment = xlCenter
-            formulaCell.VerticalAlignment = xlCenter
-            formulaCell.Borders.LineStyle = xlContinuous
-
-        
-            ' Find the supplier column with the minimum price
-            Dim minValue As Double
-            Dim minColumn As Long
-            
-            ' … dentro de For j …
-            Dim compareRange As Range
-            Dim vPos       As Variant
-        
-            ' 1) Definir rango de comparación
+            ' ==========================
+            ' Unit Price (k-th lowest)
+            ' ==========================
             Set compareRange = wsPrices.Range( _
-                  wsPrices.Cells(j, supplierStart), _
-                  wsPrices.Cells(j, supplierEnd) _
+                wsPrices.Cells(j, supplierStart), _
+                wsPrices.Cells(j, supplierEnd) _
             )
-        
-            ' 2) Si NO hay ningún precio distinto de "NA", salir con "NA"
+            
             If Application.WorksheetFunction.CountIf(compareRange, "<>NA") = 0 Then
                 wsAnalysis.Cells(currentRow, currentCol + 1).Value = "NA"
             Else
-                ' 3) calcular el valor mínimo
-                minValue = Application.WorksheetFunction.Min(compareRange)
-                ' 4) ubicar posición con Application.Match (no WorksheetFunction.Match)
-                vPos = Application.Match(minValue, compareRange, 0)
-                If Not IsError(vPos) Then
-                    minColumn = supplierStart + vPos - 1
-                    ' … aquí vendría el resto de su lógica para escribir el SMALL(...) o INDEX(...)
-                    wsAnalysis.Cells(currentRow, currentCol + 1).Formula = _
-                        "=SMALL(Prices!" & compareRange.Address(False, False) & ", " & _
-                        wsAnalysis.Cells(1, currentCol).Address(True, True) & ")"
-                Else
-                    wsAnalysis.Cells(currentRow, currentCol + 1).Value = "NA"
-                End If
+                wsAnalysis.Cells(currentRow, currentCol + 1).Formula = _
+                    "=IFERROR(SMALL(Prices!" & compareRange.Address(False, False) & "," & _
+                    wsAnalysis.Cells(headerRow, currentCol).Address(False, False) & _
+                    " ),""Not Found"")"
             End If
-            ' … resto del bucle …
-
-        
-            ' Calculate Total Price (Total Price Column)
-            Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 1)
             
-            
-            ' Use SMALL function to calculate the k-th smallest value
-            formulaCell.Formula = "=IFERROR(SMALL(Prices!" & _
-            wsPrices.Range(wsPrices.Cells(j, supplierStart), wsPrices.Cells(j, supplierEnd)).Address(False, False) & _
-            ", " & wsAnalysis.Cells(1, currentCol).Address(True, True) & "),""Not Found"")"
-            
-            
-            With formulaCell
+            With wsAnalysis.Cells(currentRow, currentCol + 1)
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
                 .NumberFormat = "$#,##0.00"
             End With
 
-            
-            ' Calculate Baseline
+    
+            ' ==========================
+            ' Supplier (text)
+            ' ==========================
+            Set formulaCell = wsAnalysis.Cells(currentRow, currentCol)
+            formulaCell.Formula = _
+                "=IF(" & wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & _
+                "=""Not Found"",""Not Found"",INDEX(Prices!$" & _
+                Split(wsPrices.Cells(1, supplierStart).Address(True, True), "$")(1) & _
+                "$1:$" & Split(wsPrices.Cells(1, supplierEnd).Address(True, True), "$")(1) & _
+                "$1,MATCH(" & wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & _
+                ",Prices!" & compareRange.Address(False, False) & ",0)))"
+    
+            With formulaCell
+                .HorizontalAlignment = xlCenter
+                .VerticalAlignment = xlCenter
+                .Borders.LineStyle = xlContinuous
+            End With
+    
+            ' ==========================
+            ' Total Price (Unit * Volume)
+            ' ==========================
+            Dim uAddr As String, volAddr As String
+            uAddr = wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False)
+            volAddr = wsAnalysis.Cells(currentRow, 1).Address(False, False)   ' Volume is col 1
+    
             Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 2)
-            formulaCell.Formula = "=IF(Prices!" & wsPrices.Cells(j, supplierStart - 1).Address & "=0, ""NA"", Prices!" & wsPrices.Cells(j, supplierStart - 1).Address & ")"
-            
+            formulaCell.Formula = _
+                "=IF(OR(" & uAddr & "=""""," & _
+                       uAddr & "=""NA""," & _
+                       uAddr & "=""Not Found""," & _
+                       volAddr & "=0)," & _
+                   """NA""," & uAddr & "*" & volAddr & ")"
+    
             With formulaCell
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
                 .NumberFormat = "$#,##0.00"
             End With
-        
-            ' Calculate Savings $ (Savings $ Column)
+    
+            ' ==========================
+            ' Baseline (Baseline unit * Volume)
+            ' ==========================
+            Dim baseUnitAddr As String
+            baseUnitAddr = wsPrices.Cells(j, supplierStart - 1).Address(False, False, xlA1, True)
+    
             Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 3)
-            formulaCell.Formula = "=IF(OR(" & _
-            wsAnalysis.Cells(currentRow, currentCol + 1).Address & "=0, " & _
-            wsAnalysis.Cells(currentRow, currentCol + 1).Address & "=""NA"", " & _
-            wsAnalysis.Cells(currentRow, currentCol + 1).Address & "=""Not Found"", " & _
-            wsAnalysis.Cells(currentRow, currentCol + 2).Address & "=0, " & _
-            wsAnalysis.Cells(currentRow, currentCol + 2).Address & "=""NA""), " & _
-            """NA"", " & _
-            wsAnalysis.Cells(currentRow, currentCol + 2).Address & " - " & _
-            wsAnalysis.Cells(currentRow, currentCol + 1).Address & ")"
-
-            
+            formulaCell.Formula = _
+                "=IF(OR(" & baseUnitAddr & "=0," & volAddr & "=0),""NA""," & _
+                   baseUnitAddr & "*" & volAddr & ")"
+    
             With formulaCell
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
                 .NumberFormat = "$#,##0.00"
-                
-                With .formatConditions
-                    .Delete ' Clear existing conditions
-                    
-                    ' Format for values greater than 0
-                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
-                    formatConditions.Interior.Color = RGB(217, 217, 217) ' Light gray
-                    formatConditions.Font.Color = RGB(0, 0, 0)         ' Black
-            
-                    ' Format for values greater than 0
-                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(198, 239, 206) ' Light green
-                    formatConditions.Font.Color = RGB(0, 97, 0)         ' Dark green
-            
-                    ' Format for values less than 0
-                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(255, 199, 206) ' Light red
-                    formatConditions.Font.Color = RGB(156, 0, 6)         ' Dark red
-            
-                    ' Format for values equal to 0
-                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(255, 235, 156) ' Yellow
-                    formatConditions.Font.Color = RGB(156, 87, 0)        ' Dark yellow
-                    
-                End With
-                
             End With
-        
-            ' Calculate Savings % (Savings % Column)
+    
+            ' ==========================
+            ' Savings $ (BaselineTotal - TotalPrice)
+            ' ==========================
+            Dim bTotalAddr As String, tTotalAddr As String
+            bTotalAddr = wsAnalysis.Cells(currentRow, currentCol + 3).Address(False, False)
+            tTotalAddr = wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False)
+    
             Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 4)
-            formulaCell.Formula = "=IF(OR(" & _
-                wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & "=0, " & _
-                wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & "=""NA"", " & _
-                wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & "=0, " & _
-                wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & "=""NA"", " & _
-                wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & "=""Not Found""), " & _
-                """NA"", (" & _
-                wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & " - " & _
-                wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & ")/" & _
-                wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & ")"
-
-            
+            formulaCell.Formula = _
+                "=IF(OR(" & tTotalAddr & "=0," & _
+                         tTotalAddr & "=""NA""," & _
+                         tTotalAddr & "=""Not Found""," & _
+                         bTotalAddr & "=0," & _
+                         bTotalAddr & "=""NA""),""NA""," & _
+                         bTotalAddr & "-" & tTotalAddr & ")"
+    
+            With formulaCell
+                .Borders.LineStyle = xlContinuous
+                .HorizontalAlignment = xlCenter
+                .VerticalAlignment = xlCenter
+                .NumberFormat = "$#,##0.00"
+    
+                With .formatConditions
+                    .Delete
+                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
+                    formatConditions.Interior.Color = RGB(217, 217, 217)
+                    formatConditions.Font.Color = RGB(0, 0, 0)
+    
+                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
+                    formatConditions.Interior.Color = RGB(198, 239, 206)
+                    formatConditions.Font.Color = RGB(0, 97, 0)
+    
+                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
+                    formatConditions.Interior.Color = RGB(255, 199, 206)
+                    formatConditions.Font.Color = RGB(156, 0, 6)
+    
+                    Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
+                    formatConditions.Interior.Color = RGB(255, 235, 156)
+                    formatConditions.Font.Color = RGB(156, 87, 0)
+                End With
+            End With
+    
+            ' ==========================
+            ' Savings % (on totals)
+            ' ==========================
+            Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 5)
+            formulaCell.Formula = _
+                "=IF(OR(" & bTotalAddr & "=0," & _
+                         bTotalAddr & "=""NA""," & _
+                         tTotalAddr & "=0," & _
+                         tTotalAddr & "=""NA""," & _
+                         tTotalAddr & "=""Not Found""),""NA"",(" & _
+                         bTotalAddr & "-" & tTotalAddr & ")/" & bTotalAddr & ")"
+    
             With formulaCell
                 .Borders.LineStyle = xlContinuous
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
                 .NumberFormat = "0%"
-                
+    
                 With .formatConditions
-                    .Delete ' Clear existing conditions
-                    
-                    ' Format for values greater than 0
+                    .Delete
                     Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
-                    formatConditions.Interior.Color = RGB(217, 217, 217) ' Light gray
-                    formatConditions.Font.Color = RGB(0, 0, 0)         ' Black
-            
-                    ' Format for values greater than 0
+                    formatConditions.Interior.Color = RGB(217, 217, 217)
+                    formatConditions.Font.Color = RGB(0, 0, 0)
+    
                     Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(198, 239, 206) ' Light green
-                    formatConditions.Font.Color = RGB(0, 97, 0)         ' Dark green
-            
-                    ' Format for values less than 0
+                    formatConditions.Interior.Color = RGB(198, 239, 206)
+                    formatConditions.Font.Color = RGB(0, 97, 0)
+    
                     Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(255, 199, 206) ' Light red
-                    formatConditions.Font.Color = RGB(156, 0, 6)         ' Dark red
-            
-                    ' Format for values equal to 0
+                    formatConditions.Interior.Color = RGB(255, 199, 206)
+                    formatConditions.Font.Color = RGB(156, 0, 6)
+    
                     Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
-                    formatConditions.Interior.Color = RGB(255, 235, 156) ' Yellow
-                    formatConditions.Font.Color = RGB(156, 87, 0)        ' Dark yellow
-                    
+                    formatConditions.Interior.Color = RGB(255, 235, 156)
+                    formatConditions.Font.Color = RGB(156, 87, 0)
                 End With
-                
             End With
         End If
-        
+    
         currentRow = currentRow + 1
     Next j
     
-    currentRow = currentRow + 1 'just leaving one space btw the final item and the baseline header
-   
-    ' Write the supplier name and merge cells across four columns
+    currentRow = currentRow + 1    ' space before summary
+    
+    ' -------------------------------------------------
+    ' Normalized Total / Savings summary for Lowest
+    ' -------------------------------------------------
+    
+    ' Header cell
     Set supplierHeaderRange = wsAnalysis.Cells(currentRow, currentCol)
     supplierHeaderRange.Value = "Normalized Total"
     supplierHeaderRange.HorizontalAlignment = xlCenter
@@ -1156,40 +1184,45 @@ Sub Analytics_With_Baseline()
     supplierHeaderRange.Interior.Color = RGB(255, 192, 0)
     supplierHeaderRange.Borders.Weight = xlThin
     
-   
- 
+    ' Ranges for totals (Total Price and Baseline)
+    Dim rangeTotal As String, rangeBase As String
+    rangeTotal = wsAnalysis.Range( _
+        wsAnalysis.Cells(3, currentCol + 2), _
+        wsAnalysis.Cells(lastRow, currentCol + 2) _
+    ).Address(False, False)
+    
+    rangeBase = wsAnalysis.Range( _
+        wsAnalysis.Cells(3, currentCol + 3), _
+        wsAnalysis.Cells(lastRow, currentCol + 3) _
+    ).Address(False, False)
+    
+    ' Sum of Total Price where both Total and Baseline are numeric
     wsAnalysis.Cells(currentRow + 1, currentCol).Formula2 = _
-    "=SUM(IF(ISNUMBER(Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 1), wsAnalysis.Cells(lastRow, currentCol + 1)).Address(False, False) & _
-    ")*ISNUMBER(Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
-    "), Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 1), wsAnalysis.Cells(lastRow, currentCol + 1)).Address(False, False) & ", 0))"
-
-
+        "=SUM(IF(ISNUMBER(" & rangeTotal & ")*ISNUMBER(" & rangeBase & ")," & _
+        rangeTotal & ",0))"
+    
     Set formulaCell = wsAnalysis.Cells(currentRow + 1, currentCol)
     With formulaCell
         .Borders.LineStyle = xlContinuous
         .HorizontalAlignment = xlCenter
         .VerticalAlignment = xlCenter
-        .NumberFormat = "$#,##0.00" ' Formatting as currency ----- here
+        .NumberFormat = "$#,##0.00"
     End With
     
-    
+    ' Sum of Baseline where both Total and Baseline are numeric
     wsAnalysis.Cells(currentRow + 2, currentCol).Formula2 = _
-    "=SUM(IF(ISNUMBER('Analysis'!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 1), wsAnalysis.Cells(lastRow, currentCol + 1)).Address(False, False) & _
-    ")*ISNUMBER('Analysis'!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
-    "), 'Analysis'!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & ", 0))"
-
-
+        "=SUM(IF(ISNUMBER(" & rangeTotal & ")*ISNUMBER(" & rangeBase & ")," & _
+        rangeBase & ",0))"
+    
     Set formulaCell = wsAnalysis.Cells(currentRow + 2, currentCol)
     With formulaCell
         .Borders.LineStyle = xlContinuous
         .HorizontalAlignment = xlCenter
         .VerticalAlignment = xlCenter
-        .NumberFormat = "$#,##0.00" ' Formatting as currency ----- here
+        .NumberFormat = "$#,##0.00"
     End With
-
     
-   
-    ' Write the supplier name and merge cells across four columns
+    ' Summary Saving $
     Set supplierHeaderRange = wsAnalysis.Cells(currentRow, currentCol + 1)
     supplierHeaderRange.Value = "Saving $"
     supplierHeaderRange.HorizontalAlignment = xlCenter
@@ -1197,59 +1230,45 @@ Sub Analytics_With_Baseline()
     supplierHeaderRange.Interior.Color = RGB(255, 192, 0)
     supplierHeaderRange.Borders.Weight = xlThin
     
-           
-    ' Apply the formula to the target cell
+    Dim sumTotalAddr As String, sumBaseAddr As String
+    sumTotalAddr = wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False)
+    sumBaseAddr = wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False)
     
-    wsAnalysis.Cells(currentRow + 1, currentCol + 1).Formula = "=IF(OR(" & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "=0," & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "=""NA""," & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & "=0," & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & "=""NA""), " & _
-    """NA"", " & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "-" & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & ")"
-
+    wsAnalysis.Cells(currentRow + 1, currentCol + 1).Formula = _
+        "=IF(OR(" & sumBaseAddr & "=0," & _
+                 sumBaseAddr & "=""NA""," & _
+                 sumTotalAddr & "=0," & _
+                 sumTotalAddr & "=""NA""),""NA""," & _
+                 sumBaseAddr & "-" & sumTotalAddr & ")"
     
-    ' Set a reference to the formula cell
     Set formulaCell = wsAnalysis.Cells(currentRow + 1, currentCol + 1)
-    
-    ' Format the cell
     With formulaCell
         .Borders.LineStyle = xlContinuous
         .HorizontalAlignment = xlCenter
         .VerticalAlignment = xlCenter
-        .NumberFormat = "$#,##0.00" ' Formatting as currency
-        
+        .NumberFormat = "$#,##0.00"
+    
         With .formatConditions
-             .Delete ' Clear existing conditions
-            
-             ' Format for values greater than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
-             formatConditions.Interior.Color = RGB(217, 217, 217) ' Light gray
-             formatConditions.Font.Color = RGB(0, 0, 0)         ' Black
+            .Delete
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
+            formatConditions.Interior.Color = RGB(217, 217, 217)
+            formatConditions.Font.Color = RGB(0, 0, 0)
     
-             ' Format for values greater than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
-             formatConditions.Interior.Color = RGB(198, 239, 206) ' Light green
-             formatConditions.Font.Color = RGB(0, 97, 0)         ' Dark green
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
+            formatConditions.Interior.Color = RGB(198, 239, 206)
+            formatConditions.Font.Color = RGB(0, 97, 0)
     
-             ' Format for values less than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-             formatConditions.Interior.Color = RGB(255, 199, 206) ' Light red
-             formatConditions.Font.Color = RGB(156, 0, 6)         ' Dark red
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
+            formatConditions.Interior.Color = RGB(255, 199, 206)
+            formatConditions.Font.Color = RGB(156, 0, 6)
     
-             ' Format for values equal to 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
-             formatConditions.Interior.Color = RGB(255, 235, 156) ' Yellow
-             formatConditions.Font.Color = RGB(156, 87, 0)        ' Dark yellow
-            
-         End With
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
+            formatConditions.Interior.Color = RGB(255, 235, 156)
+            formatConditions.Font.Color = RGB(156, 87, 0)
+        End With
     End With
-
-
-
-
-    ' Write the supplier name and merge cells across four columns
+    
+    ' Summary Saving %
     Set supplierHeaderRange = wsAnalysis.Cells(currentRow, currentCol + 2)
     supplierHeaderRange.Value = "Saving %"
     supplierHeaderRange.HorizontalAlignment = xlCenter
@@ -1257,53 +1276,48 @@ Sub Analytics_With_Baseline()
     supplierHeaderRange.Interior.Color = RGB(255, 192, 0)
     supplierHeaderRange.Borders.Weight = xlThin
     
-    wsAnalysis.Cells(currentRow + 1, currentCol + 2).Formula = "=IF(OR(" & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "=0," & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "=""NA""," & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & "=0," & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & "=""NA""), " & _
-    """Check Values"", (" & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & "-" & _
-    wsAnalysis.Cells(currentRow + 1, currentCol).Address(False, False) & ")/" & _
-    wsAnalysis.Cells(currentRow + 2, currentCol).Address(False, False) & ")"
+    wsAnalysis.Cells(currentRow + 1, currentCol + 2).Formula = _
+        "=IF(OR(" & sumBaseAddr & "=0," & _
+                 sumBaseAddr & "=""NA""," & _
+                 sumTotalAddr & "=0," & _
+                 sumTotalAddr & "=""NA""),""Check Values"",(" & _
+                 sumBaseAddr & "-" & sumTotalAddr & ")/" & sumBaseAddr & ")"
     
     Set formulaCell = wsAnalysis.Cells(currentRow + 1, currentCol + 2)
-    
-    ' Format the cell
     With formulaCell
         .Borders.LineStyle = xlContinuous
         .HorizontalAlignment = xlCenter
         .VerticalAlignment = xlCenter
-        .NumberFormat = "0%" ' Formatting as percentage
-        
+        .NumberFormat = "0%"
+    
         With .formatConditions
-             .Delete ' Clear existing conditions
-            
-             ' Format for values greater than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
-             formatConditions.Interior.Color = RGB(217, 217, 217) ' Light gray
-             formatConditions.Font.Color = RGB(0, 0, 0)         ' Black
+            .Delete
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
+            formatConditions.Interior.Color = RGB(217, 217, 217)
+            formatConditions.Font.Color = RGB(0, 0, 0)
     
-             ' Format for values greater than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
-             formatConditions.Interior.Color = RGB(198, 239, 206) ' Light green
-             formatConditions.Font.Color = RGB(0, 97, 0)         ' Dark green
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
+            formatConditions.Interior.Color = RGB(198, 239, 206)
+            formatConditions.Font.Color = RGB(0, 97, 0)
     
-             ' Format for values less than 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-             formatConditions.Interior.Color = RGB(255, 199, 206) ' Light red
-             formatConditions.Font.Color = RGB(156, 0, 6)         ' Dark red
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
+            formatConditions.Interior.Color = RGB(255, 199, 206)
+            formatConditions.Font.Color = RGB(156, 0, 6)
     
-             ' Format for values equal to 0
-             Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
-             formatConditions.Interior.Color = RGB(255, 235, 156) ' Yellow
-             formatConditions.Font.Color = RGB(156, 87, 0)        ' Dark yellow
-            
-         End With
+            Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
+            formatConditions.Interior.Color = RGB(255, 235, 156)
+            formatConditions.Font.Color = RGB(156, 87, 0)
+        End With
     End With
+
+   
+   
+   ' ------------------------------------------------ Lowestt
+   
+   
     
     ' Add a blank space by shifting currentCol to the right for "LSI"
-    currentCol = currentCol + 6  ' Add space between "Lowest" and "LSI" columns
+    currentCol = currentCol + 7  ' Add space between "Lowest" and "LSI" columns
 
     
     '--- Adjust merged header and sub-header definitions ---
