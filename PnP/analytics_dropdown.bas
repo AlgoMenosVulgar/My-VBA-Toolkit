@@ -223,10 +223,20 @@ Sub Analytics_With_Baseline()
                 'formulaString = "='Prices'!" & wsPrices.Cells(j, i).Address(False, True) 'test filter
                 
                 'formulaString = "=IF(OR(" & dropdownRange.Address(False, False) & "=""All""," & dropdownRange.Address(False, False) & "=Prices!C" & j & "), 'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ", ""NA"")"
-                formulaString = "=IF(OR(" & _
-                "COUNTIF(" & dropdownRange.Address(False, False) & ", ""All"")>0," & _
-                "COUNTIF(" & dropdownRange.Address(False, False) & ", Prices!B" & j & ")>0)," & _
-                "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ", ""NA"")"
+                formulaString = _
+                "=IF(OR(" & _
+                    "AND(" & _
+                        "COUNTIF(" & dropdownRange.Address(False, False) & ",""All"")=0," & _
+                        "COUNTIF(" & dropdownRange.Address(False, False) & ",Prices!B" & j & ")=0" & _
+                    ")," & _
+                    "'Prices'!C" & j & "=""NA""," & _
+                    "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & "=""NA""" & _
+                ")," & _
+                """NA""," & _
+                "'Prices'!C" & j & "*'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & _
+                ")"
+
+
 
 
                 With formulaCell
@@ -239,12 +249,24 @@ Sub Analytics_With_Baseline()
                 
                 ' Savings $ (same as before)
                 Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 1)
-                formulaString = "=IF(OR(" & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=0, " & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=""NA"", " & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=""NA""), " & _
-                    """NA"", " & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "-(Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "))"
+                ' Savings $ (column to the right of Total Price)
+                
+               formulaString = _
+                "=IF(OR(" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & "=0," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=0," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=0" & _
+                "),""NA"",(" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "*" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & _
+                ")-" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & _
+                ")"
+
+                
 
                 With formulaCell
                     .Formula = formulaString
@@ -283,47 +305,57 @@ Sub Analytics_With_Baseline()
 
                 ' Savings % (Percentage Format)
                 Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 2)
-                formulaString = "=IF(OR(" & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=0, " & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=""NA"", " & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=""NA""), " & _
-                    """NA"", " & _
-                    "(Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "-Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & ")/" & _
-                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & ")"
+                formulaString = _
+                "=IF(OR(" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=""NA""," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & "=0," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "=0," & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & "=0" & _
+                "),""NA"",(" & _
+                    "(Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "*" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & ")" & _
+                    "-" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, currentCol).Address(False, True) & _
+                ")/(" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 2).Address(False, True) & "*" & _
+                    "Analysis!" & wsAnalysis.Cells(j + 1, 1).Address(False, True) & _
+                "))"
 
-
+                
                 With formulaCell
                     .Formula = formulaString
                     .Borders.LineStyle = xlContinuous
                     .HorizontalAlignment = xlCenter
                     .VerticalAlignment = xlCenter
                     .NumberFormat = "0%" ' Formatting as percentage
-                    
+                
                     With .formatConditions
                         .Delete ' Clear existing conditions
-                        
-                        ' Format for values greater than 0
-                        Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="NA")
-                        formatConditions.Interior.Color = RGB(217, 217, 217) ' Light gray
-                        formatConditions.Font.Color = RGB(0, 0, 0)         ' Black
                 
-                        ' Format for values greater than 0
+                        ' NA
+                        Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="=""NA""")
+                        formatConditions.Interior.Color = RGB(217, 217, 217)
+                        formatConditions.Font.Color = RGB(0, 0, 0)
+                
+                        ' > 0
                         Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
-                        formatConditions.Interior.Color = RGB(198, 239, 206) ' Light green
-                        formatConditions.Font.Color = RGB(0, 97, 0)         ' Dark green
+                        formatConditions.Interior.Color = RGB(198, 239, 206)
+                        formatConditions.Font.Color = RGB(0, 97, 0)
                 
-                        ' Format for values less than 0
+                        ' < 0
                         Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
-                        formatConditions.Interior.Color = RGB(255, 199, 206) ' Light red
-                        formatConditions.Font.Color = RGB(156, 0, 6)         ' Dark red
+                        formatConditions.Interior.Color = RGB(255, 199, 206)
+                        formatConditions.Font.Color = RGB(156, 0, 6)
                 
-                        ' Format for values equal to 0
+                        ' = 0
                         Set formatConditions = .Add(Type:=xlCellValue, Operator:=xlEqual, Formula1:="0")
-                        formatConditions.Interior.Color = RGB(255, 235, 156) ' Yellow
-                        formatConditions.Font.Color = RGB(156, 87, 0)        ' Dark yellow
+                        formatConditions.Interior.Color = RGB(255, 235, 156)
+                        formatConditions.Font.Color = RGB(156, 87, 0)
                     End With
-                    
                 End With
+
 
                 ' Low % (Percentage Format)
                 Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 3)
