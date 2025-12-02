@@ -440,14 +440,29 @@ Sub Analytics_With_Baseline()
         
         
         'wsAnalysis.Cells(currentRow + 1, currentCol).Formula = "=SUMIF('Prices'!" & wsPrices.Columns(supplierStart - 1).Address(False, True) & ", ""<>NA"", 'Prices'!" & wsPrices.Columns(i).Address(False, True) & ")"
-        wsAnalysis.Cells(currentRow + 1, currentCol).Formula = "=SUMIF(" & wsAnalysis.Cells(3, BaselineColumn).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, BaselineColumn).Address(False, False) & ",""<>NA""," & wsAnalysis.Cells(3, currentCol).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, currentCol).Address(False, False) & ")"
+        wsAnalysis.Cells(currentRow + 1, currentCol).Formula = _
+        "=SUMPRODUCT(" & _
+            "ISNUMBER(" & _
+                wsAnalysis.Range(wsAnalysis.Cells(3, BaselineColumn), _
+                                 wsAnalysis.Cells(lastRow, BaselineColumn)).Address(False, False) & _
+            ")*ISNUMBER(" & _
+                wsAnalysis.Range(wsAnalysis.Cells(3, currentCol), _
+                                 wsAnalysis.Cells(lastRow, currentCol)).Address(False, False) & _
+            ")*" & _
+                wsAnalysis.Range(wsAnalysis.Cells(3, currentCol), _
+                                 wsAnalysis.Cells(lastRow, currentCol)).Address(False, False) & _
+        ")"
 
+
+
+
+        
         Set formulaCell = wsAnalysis.Cells(currentRow + 1, currentCol)
         With formulaCell
             .Borders.LineStyle = xlContinuous
             .HorizontalAlignment = xlCenter
             .VerticalAlignment = xlCenter
-            .NumberFormat = "$#,##0.00" ' Formatting as currency ----- here
+            .NumberFormat = "$#,##0.00"
         End With
         
         
@@ -631,19 +646,21 @@ Sub Analytics_With_Baseline()
             ' ========================
             ' Unit Price (INDEX logic)
             ' ========================
-            wsAnalysis.Cells(currentRow, currentCol + 1).Formula = _
-                "=IF(OR(" & _
-                    "COUNTIF(" & dropdownRange.Address(False, False) & ",""All"")>0," & _
-                    "COUNTIF(" & dropdownRange.Address(False, False) & ",Prices!B" & j & ")>0)," & _
-                    "IFERROR(" & _
-                        "INDEX(Prices!" & wsPrices.Cells(j, supplierStart - 1).Address(False, False) & ":" & _
-                                       wsPrices.Cells(j, supplierEnd).Address(False, False) & "," & _
-                              "MATCH(" & wsAnalysis.Cells(currentRow, currentCol).Address(False, False) & "," & _
-                                       "Prices!" & wsPrices.Cells(1, supplierStart - 1).Address(False, False) & ":" & _
-                                                 wsPrices.Cells(1, supplierEnd).Address(False, False) & ",0)" & _
-                        "),""NA"")," & _
-                """NA"")"
-    
+           wsAnalysis.Cells(currentRow, currentCol + 1).Formula = _
+            "=IF(OR(" & _
+                "COUNTIF(" & dropdownRange.Address(False, False) & ",""All"")>0," & _
+                "COUNTIF(" & dropdownRange.Address(False, False) & ",Prices!B" & j & ")>0)," & _
+                "IFERROR(" & _
+                    "INDEX(Prices!" & wsPrices.Cells(j, supplierStart - 1).Address(False, False) & ":" & _
+                                wsPrices.Cells(j, supplierEnd).Address(False, False) & "," & _
+                           "MATCH(" & wsAnalysis.Cells(currentRow, currentCol).Address(False, False) & "," & _
+                                    "Prices!" & wsPrices.Cells(1, supplierStart - 1).Address(False, False) & ":" & _
+                                              wsPrices.Cells(1, supplierEnd).Address(False, False) & ",0)" & _
+                    ")," & """NA""" & _
+                ")," & _
+                """NA""" & _
+            ")"
+
             With wsAnalysis.Cells(currentRow, currentCol + 1)
                 .NumberFormat = "$#,##0.00"
                 .HorizontalAlignment = xlCenter
@@ -816,13 +833,14 @@ Sub Analytics_With_Baseline()
         .NumberFormat = "$#,##0.00"
     End With
     
-    ' Sum Baseline where Total Price <> NA
+    ' Sum Baseline where Total Price <> NA  (BaselineUnit * Volume)
     wsAnalysis.Cells(currentRow + 2, currentCol).Formula2 = _
-        "=SUMIF(" & _
-            "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(1, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
-            ",""<>NA""," & _
-            "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(1, currentCol + 3), wsAnalysis.Cells(lastRow, currentCol + 3)).Address(False, False) & _
-        ")"
+    "=SUMPRODUCT((" & _
+        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
+        "<>""NA"")*" & _
+        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 3), wsAnalysis.Cells(lastRow, currentCol + 3)).Address(False, False) & _
+    ")"
+
     
     Set formulaCell = wsAnalysis.Cells(currentRow + 2, currentCol)
     With formulaCell
@@ -831,6 +849,7 @@ Sub Analytics_With_Baseline()
         .VerticalAlignment = xlCenter
         .NumberFormat = "$#,##0.00"
     End With
+
     
     ' "Saving $" header
     Set supplierHeaderRange = wsAnalysis.Cells(currentRow, currentCol + 1)
