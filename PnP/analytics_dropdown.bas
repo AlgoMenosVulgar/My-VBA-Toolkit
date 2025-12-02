@@ -1039,18 +1039,33 @@ Sub Analytics_With_Baseline()
             ' ==========================
             ' Unit Price (k-th lowest)
             ' ==========================
+            ' ==========================
+            ' Unit Price (k-th lowest)  (filtered by C3:C5 + k dropdown)
+            ' ==========================
+            Dim catRangeAddr As String
+            
             Set compareRange = wsPrices.Range( _
                 wsPrices.Cells(j, supplierStart), _
                 wsPrices.Cells(j, supplierEnd) _
             )
             
+            ' C3:C5 – the categorized dropdown range (All / categories)
+            catRangeAddr = wsAnalysis.Range( _
+                                wsAnalysis.Cells(headerRow + 2, 3), _
+                                wsAnalysis.Cells(headerRow + 4, 3) _
+                           ).Address(False, False)
+            
             If Application.WorksheetFunction.CountIf(compareRange, "<>NA") = 0 Then
                 wsAnalysis.Cells(currentRow, currentCol + 1).Value = "NA"
             Else
                 wsAnalysis.Cells(currentRow, currentCol + 1).Formula = _
-                    "=IFERROR(SMALL(Prices!" & compareRange.Address(False, False) & "," & _
-                    wsAnalysis.Cells(headerRow, currentCol).Address(False, False) & _
-                    " ),""Not Found"")"
+                    "=IF(OR(" & _
+                        "COUNTIF(" & catRangeAddr & ",""All"")>0," & _
+                        "COUNTIF(" & catRangeAddr & ",Prices!B" & j & ")>0)," & _
+                        "IFERROR(SMALL(Prices!" & compareRange.Address(False, False) & "," & _
+                            wsAnalysis.Cells(headerRow, currentCol).Address(False, False) & _
+                        " ),""Not Found"")," & _
+                    """NA"")"
             End If
             
             With wsAnalysis.Cells(currentRow, currentCol + 1)
@@ -1059,6 +1074,7 @@ Sub Analytics_With_Baseline()
                 .VerticalAlignment = xlCenter
                 .NumberFormat = "$#,##0.00"
             End With
+
 
     
             ' ==========================
