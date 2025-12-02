@@ -370,7 +370,7 @@ Sub Analytics_With_Baseline()
                     "IF('Prices'!" & wsPrices.Cells(j, i).Address(False, True) & "=""NA"",""NA""," & _
                     "IFERROR((SMALL(" & supplierRangeAddress & "," & _
                     "@FREQUENCY(" & supplierRangeAddress & ",0)+" & _
-                    wsAnalysis.Cells(1, (lastColumn - 5) * 5 + 11).Address(False, False) & ")-" & _
+                    wsAnalysis.Cells(1, (lastColumn - 5) * 5 + 12).Address(False, False) & ")-" & _
                     "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ")/" & _
                     "'Prices'!" & wsPrices.Cells(j, i).Address(False, True) & ",""NA"")))"
                 
@@ -410,8 +410,8 @@ Sub Analytics_With_Baseline()
                             .Interior.Color = RGB(255, 199, 206)
                             .Font.Color = RGB(156, 0, 6)
                         End With
-                
-                        ' Values = 0 - Yellow background, dark yellow text
+                    
+                            ' Values = 0 - Yellow background, dark yellow text
                         Set formatConditions = .Add(Type:=xlCellValue, _
                                                   Operator:=xlEqual, _
                                                   Formula1:="0")
@@ -440,20 +440,11 @@ Sub Analytics_With_Baseline()
         
         
         'wsAnalysis.Cells(currentRow + 1, currentCol).Formula = "=SUMIF('Prices'!" & wsPrices.Columns(supplierStart - 1).Address(False, True) & ", ""<>NA"", 'Prices'!" & wsPrices.Columns(i).Address(False, True) & ")"
-        wsAnalysis.Cells(currentRow + 1, currentCol).Formula = _
-        "=SUMPRODUCT(" & _
-            "ISNUMBER(" & _
-                wsAnalysis.Range(wsAnalysis.Cells(3, BaselineColumn), _
-                                 wsAnalysis.Cells(lastRow, BaselineColumn)).Address(False, False) & _
-            ")*ISNUMBER(" & _
-                wsAnalysis.Range(wsAnalysis.Cells(3, currentCol), _
-                                 wsAnalysis.Cells(lastRow, currentCol)).Address(False, False) & _
-            ")*" & _
-                wsAnalysis.Range(wsAnalysis.Cells(3, currentCol), _
-                                 wsAnalysis.Cells(lastRow, currentCol)).Address(False, False) & _
+        wsAnalysis.Cells(currentRow + 1, currentCol).Formula = "=SUMIF(" & _
+        wsAnalysis.Cells(3, BaselineColumn).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, BaselineColumn).Address(False, False) & _
+        ",""<>NA""," & _
+        wsAnalysis.Cells(3, currentCol).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, currentCol).Address(False, False) & _
         ")"
-
-
 
 
         
@@ -468,8 +459,12 @@ Sub Analytics_With_Baseline()
         
         
         'wsAnalysis.Cells(currentRow + 2, currentCol).Formula = "=SUMIF('Prices'!" & wsPrices.Columns(i).Address(False, True) & ", ""<>NA"", 'Prices'!" & wsPrices.Columns(supplierStart - 1).Address(False, True) & ")"
-        wsAnalysis.Cells(currentRow + 2, currentCol).Formula = "=SUMIF(" & wsAnalysis.Cells(3, currentCol).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, currentCol).Address(False, False) & ",""<>NA""," & wsAnalysis.Cells(3, BaselineColumn).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, BaselineColumn).Address(False, False) & ")"
-
+        wsAnalysis.Cells(currentRow + 2, currentCol).Formula = "=SUMPRODUCT(--(" & _
+        wsAnalysis.Cells(3, currentCol).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, currentCol).Address(False, False) & "<>""NA"")," & _
+        wsAnalysis.Cells(3, BaselineColumn).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, BaselineColumn).Address(False, False) & "," & _
+        wsAnalysis.Cells(3, BaselineColumn - 1).Address(False, False) & ":" & wsAnalysis.Cells(lastRow, BaselineColumn - 1).Address(False, False) & _
+        ")"
+        
         
         Set formulaCell = wsAnalysis.Cells(currentRow + 2, currentCol)
         With formulaCell
@@ -835,10 +830,10 @@ Sub Analytics_With_Baseline()
     
     ' Sum Baseline where Total Price <> NA  (BaselineUnit * Volume)
     wsAnalysis.Cells(currentRow + 2, currentCol).Formula2 = _
-    "=SUMPRODUCT((" & _
-        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
-        "<>""NA"")*" & _
-        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(3, currentCol + 3), wsAnalysis.Cells(lastRow, currentCol + 3)).Address(False, False) & _
+    "=SUMIF(" & _
+        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(1, currentCol + 2), wsAnalysis.Cells(lastRow, currentCol + 2)).Address(False, False) & _
+        ",""<>NA""," & _
+        "Analysis!" & wsAnalysis.Range(wsAnalysis.Cells(1, currentCol + 3), wsAnalysis.Cells(lastRow, currentCol + 3)).Address(False, False) & _
     ")"
 
     
@@ -1436,8 +1431,8 @@ Sub Analytics_With_Baseline()
             ' ---------------------------
             ' Insert the formula for Total Price in the new position (now at currentCol+2)
             wsAnalysis.Cells(currentRow, currentCol + 2).Formula = "=IFERROR(" & _
-            "INDEX(Prices!" & wsPrices.Cells(j, supplierStart - 1).Address & ":" & wsPrices.Cells(j, supplierEnd).Address & _
-            ", MATCH(" & wsAnalysis.Cells(currentRow, currentCol).Address(False, False) & ", Prices!" & wsPrices.Cells(1, supplierStart - 1).Address & ":" & wsPrices.Cells(1, supplierEnd).Address & ", 0))" & _
+            wsAnalysis.Cells(currentRow, currentCol + 1).Address(False, False) & " * " & _
+            wsAnalysis.Cells(currentRow, BaselineColumn - 1).Address(False, False) & _
             ",""NA"")"
               
                 
@@ -1452,10 +1447,9 @@ Sub Analytics_With_Baseline()
             ' ---------------------------
             ' Calculate Baseline (now placed at currentCol+3)
             Set formulaCell = wsAnalysis.Cells(currentRow, currentCol + 3)
-            formulaCell.Formula = "=IF(" & _
-                wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & "=""NA"",""NA"",IF(Prices!" & _
-                wsPrices.Cells(j, supplierStart - 1).Address & "=0,""NA"",Prices!" & _
-                wsPrices.Cells(j, supplierStart - 1).Address & "))"
+            formulaCell.Formula = "=" & _
+                wsAnalysis.Cells(currentRow, BaselineColumn).Address(False, False) & " * " & _
+                wsAnalysis.Cells(currentRow, BaselineColumn - 1).Address(False, False)
 
                 
                 
@@ -1470,8 +1464,9 @@ Sub Analytics_With_Baseline()
             ' Insert the new Unit Price column at currentCol+1
             ' This divides Total Price (now in currentCol+2) by Baseline (in currentCol+3)
             wsAnalysis.Cells(currentRow, currentCol + 1).Formula = "=IFERROR(" & _
-            wsAnalysis.Cells(currentRow, currentCol + 2).Address(False, False) & "/" & _
-            wsAnalysis.Cells(currentRow, currentCol + 3).Address(False, False) & ",""NA"")"
+            "INDEX(Prices!" & wsPrices.Cells(j, supplierStart - 1).Address & ":" & wsPrices.Cells(j, supplierEnd).Address & _
+            ", MATCH(" & wsAnalysis.Cells(currentRow, currentCol).Address(False, False) & ", Prices!" & wsPrices.Cells(1, supplierStart - 1).Address & ":" & wsPrices.Cells(1, supplierEnd).Address & ", 0))" & _
+            ",""NA"")"
 
                 
             With wsAnalysis.Cells(currentRow, currentCol + 1)
