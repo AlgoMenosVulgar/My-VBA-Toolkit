@@ -1,213 +1,95 @@
 Option Explicit
 
-'==================== CONFIG ====================
-' If you have a specific password to try first, put it here.
-' Leave blank to go straight to the brute-force collision method.
-Private Const PRIORITY_PASSWORD As String = "CB"
-Private Const INCLUDE_SUBFOLDERS As Boolean = False
-'================================================
+Private Const PASS_PRIORITY As String = "ES"
 
-Public Sub Unprotect_All_Excel_InFolder()
-    Dim app As Application
-    Dim wbHost As Workbook
-    Dim folderPath As String
-
+Public Sub UnprotectEverything()
+    Dim app As Application, wb As Workbook, ws As Worksheet
+    Dim fso As Object, folder As Object, file As Object
+    Dim folderPath As String, t As Double
+    
     Set app = Application
-    Set wbHost = ThisWorkbook
-    folderPath = GetFolderPathOfWorkbook(wbHost)
-
-    If Len(folderPath) = 0 Then
-        MsgBox "Could not resolve folder of the host workbook.", vbExclamation
-        Exit Sub
-    End If
-
-    ' Optimization settings
-    app.ScreenUpdating = False
-    app.DisplayAlerts = False
-    app.EnableEvents = False
-    app.Calculation = xlCalculationManual
-
-    Dim okCount As Long, failCount As Long, skipCount As Long
-    okCount = 0: failCount = 0: skipCount = 0
-
-    ProcessFolder folderPath, okCount, failCount, skipCount
-
-    ' Restore settings
-    app.Calculation = xlCalculationAutomatic
-    app.ScreenUpdating = True
-    app.DisplayAlerts = True
-    app.EnableEvents = True
-
-    MsgBox "Done." & vbCrLf & _
-           "Processed & saved: " & okCount & vbCrLf & _
-           "Failed:            " & failCount & vbCrLf & _
-           "Skipped:           " & skipCount, vbInformation
-End Sub
-
-Private Function GetFolderPathOfWorkbook(wb As Workbook) As String
-    On Error GoTo EH
-    Dim p As String
-    p = wb.Path
-    If Len(p) > 0 Then
-        If Right$(p, 1) <> "\" Then p = p & "\"
-        GetFolderPathOfWorkbook = p
-    Else
-        GetFolderPathOfWorkbook = ""
-    End If
-    Exit Function
-EH:
-    GetFolderPathOfWorkbook = ""
-End Function
-
-Private Sub ProcessFolder(ByVal folderPath As String, _
-                          ByRef okCount As Long, ByRef failCount As Long, ByRef skipCount As Long)
-    Dim fso As Object, folder As Object, file As Object, subf As Object
+    ' Disable alerts and events to prevent popups and lag
+    app.ScreenUpdating = False: app.DisplayAlerts = False: app.EnableEvents = False
+    app.Calculation = xlCalculationManual: t = Timer
+    
+    folderPath = ThisWorkbook.Path & "\"
     Set fso = CreateObject("Scripting.FileSystemObject")
-
-    If Not fso.FolderExists(folderPath) Then Exit Sub
     Set folder = fso.GetFolder(folderPath)
 
-    ' Files in folder
+    ' 1. Process THIS workbook first
+    UnlockWB ThisWorkbook
+
+    ' 2. Process all other Excel files in the same folder
     For Each file In folder.Files
-        If IsExcelCandidate(file) Then
-            If LCase(file.Path) = LCase(ThisWorkbook.FullName) Then
-                skipCount = skipCount + 1
-            Else
-                ProcessWorkbook file.Path, okCount, failCount
+        If IsExcel(file.Name) And LCase(file.Path) <> LCase(ThisWorkbook.FullName) Then
+            Dim targetWB As Workbook
+            On Error Resume Next
+            Set targetWB = app.Workbooks.Open(file.Path, 0, False)
+            If Err.Number = 0 Then
+                UnlockWB targetWB
+                targetWB.Close True ' Save and Close
             End If
+            On Error GoTo 0
         End If
     Next
 
-    ' Optional recursion
-    If INCLUDE_SUBFOLDERS Then
-        For Each subf In folder.SubFolders
-            ProcessFolder subf.Path, okCount, failCount, skipCount
-        Next
-    End If
+    ' Reset Excel environment
+    app.Calculation = xlCalculationAutomatic
+    app.ScreenUpdating = True: app.DisplayAlerts = True: app.EnableEvents = True
+    MsgBox "Process Finished." & vbCrLf & "Time: " & Format(Timer - t, "0.00") & "s", vbInformation
 End Sub
 
-Private Function IsExcelCandidate(fileObj As Object) As Boolean
-    Dim name As String, ext As String
-    name = LCase(fileObj.Name)
-    ' Ignore temp files
-    If Left$(name, 2) = "~$" Then
-        IsExcelCandidate = False
-        Exit Function
+' Logic to handle both Workbook structure and individual Sheets
+Private Sub UnlockWB(wb As Workbook)
+    Dim ws As Worksheet
+    
+    ' Check Workbook Protection
+    If wb.ProtectStructure Or wb.ProtectWindows Then TryUnlock wb
+    
+    ' Check each Worksheet
+    For Each ws In wb.Worksheets
+        If ws.ProtectContents Then TryUnlock ws
+    Next ws
+End Sub
+
+' The Core 2-Step Logic
+Private Sub TryUnlock(obj As Object)
+    On Error Resume Next
+    
+    ' Step 1: Try "ES"
+    obj.Unprotect PASS_PRIORITY
+    If Not IsLocked(obj) Then Exit Sub
+    
+    ' Step 2: If "ES" failed, ask the user
+    ' We must briefly turn ScreenUpdating ON to see the InputBox clearly
+    Application.ScreenUpdating = True
+    
+    Dim manualPass As String
+    Dim targetName As String
+    targetName = IIf(TypeName(obj) = "Workbook", "Workbook Structure", "Sheet: " & obj.Name)
+    
+    manualPass = InputBox("Password 'ES' failed for:" & vbCrLf & _
+                          "File: " & obj.Parent.Name & vbCrLf & _
+                          "Target: " & targetName & vbCrLf & vbCrLf & _
+                          "Enter new password (or leave blank to skip):", "Manual Password Required")
+    
+    If manualPass <> "" Then
+        obj.Unprotect manualPass
     End If
-    ext = LCase$(Right$(name, Len(name) - InStrRev(name, ".")))
-    Select Case ext
-        Case "xlsx", "xlsm", "xlsb", "xls"
-            IsExcelCandidate = True
-        Case Else
-            IsExcelCandidate = False
-    End Select
+    
+    Application.ScreenUpdating = False
+End Sub
+
+' Helper: Checks if the object is still locked
+Private Function IsLocked(obj As Object) As Boolean
+    If TypeName(obj) = "Workbook" Then
+        IsLocked = (obj.ProtectStructure Or obj.ProtectWindows)
+    Else
+        IsLocked = obj.ProtectContents
+    End If
 End Function
 
-Private Sub ProcessWorkbook(ByVal filePath As String, _
-                            ByRef okCount As Long, ByRef failCount As Long)
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim sheetErr As Boolean
-    
-    On Error Resume Next
-    Set wb = Application.Workbooks.Open(Filename:=filePath, UpdateLinks:=0, ReadOnly:=False)
-    If Err.Number <> 0 Or wb Is Nothing Then
-        Debug.Print "OPEN FAIL: "; filePath; " | "; Err.Description
-        Err.Clear
-        failCount = failCount + 1
-        Exit Sub
-    End If
-    On Error GoTo 0
-
-    ' 1. Attempt to Break Workbook Structure
-    ' Note: The collision hack works best on sheets, but we attempt it on the Workbook too.
-    If wb.ProtectStructure Or wb.ProtectWindows Then
-        If Not TryUnprotectObject(wb) Then
-            Debug.Print "Workbook Structure unprotect failed: " & wb.Name
-            sheetErr = True
-        End If
-    End If
-
-    ' 2. Attempt to Break Each Worksheet
-    For Each ws In wb.Worksheets
-        If ws.ProtectContents Then
-            If Not TryUnprotectObject(ws) Then
-                Debug.Print "Sheet unprotect failed: [" & wb.Name & "] '" & ws.Name & "'"
-                sheetErr = True
-            End If
-        End If
-    Next ws
-
-    ' 3. Save and Close
-    On Error Resume Next
-    wb.Save
-    If Err.Number <> 0 Then
-        Debug.Print "SAVE FAIL: "; filePath; " | "; Err.Description
-        sheetErr = True
-        Err.Clear
-    End If
-    
-    wb.Close SaveChanges:=False
-    On Error GoTo 0
-
-    If sheetErr Then failCount = failCount + 1 Else okCount = okCount + 1
-End Sub
-
-' ==================================================================================
-' THE COMBINATORICS ENGINE
-' Tries the Priority Password first, then runs the "12-Loop" Bit-Flip Attack
-' This function accepts both Workbook and Worksheet objects
-' ==================================================================================
-Private Function TryUnprotectObject(obj As Object) As Boolean
-    On Error Resume Next
-    
-    ' Method A: Try Config Password
-    Err.Clear
-    obj.Unprotect PRIORITY_PASSWORD
-    If obj.ProtectContents = False And obj.ProtectStructure = False Then
-        TryUnprotectObject = True
-        Exit Function
-    End If
-
-    ' Method B: Try Blank Password
-    Err.Clear
-    obj.Unprotect ""
-    If obj.ProtectContents = False And obj.ProtectStructure = False Then
-        TryUnprotectObject = True
-        Exit Function
-    End If
-
-    ' Method C: The "Twin Letter" Combinatorics (Bit-Flip Attack)
-    ' This generates a collision for the 16-bit hash used in standard protection.
-    Dim a As Integer, b As Integer, c As Integer, d As Integer, e As Integer, f As Integer
-    Dim g As Integer, h As Integer, i As Integer, j As Integer, k As Integer, l As Integer
-    
-    ' Loops A through L (65 to 66 represents A and B)
-    For a = 65 To 66: For b = 65 To 66: For c = 65 To 66
-    For d = 65 To 66: For e = 65 To 66: For f = 65 To 66
-    For g = 65 To 66: For h = 65 To 66: For i = 65 To 66
-    For j = 65 To 66: For k = 65 To 66: For l = 32 To 126
-        
-        Err.Clear
-        obj.Unprotect Chr(a) & Chr(b) & Chr(c) & Chr(d) & Chr(e) & Chr(f) & _
-                      Chr(g) & Chr(h) & Chr(i) & Chr(j) & Chr(k) & Chr(l)
-        
-        ' Check if success
-        ' Need to handle difference between Workbook and Worksheet properties
-        If TypeName(obj) = "Workbook" Then
-            If obj.ProtectStructure = False And obj.ProtectWindows = False Then
-                TryUnprotectObject = True
-                Exit Function
-            End If
-        ElseIf TypeName(obj) = "Worksheet" Then
-            If obj.ProtectContents = False Then
-                TryUnprotectObject = True
-                Exit Function
-            End If
-        End If
-        
-    Next: Next: Next: Next: Next: Next
-    Next: Next: Next: Next: Next: Next
-
-    TryUnprotectObject = False
+' Helper: Identifies Excel files and ignores temp files
+Private Function IsExcel(n As String) As Boolean
+    IsExcel = (InStr(1, ".xls .xlsx .xlsm .xlsb", Right(LCase(n), 4)) > 0) And (Left(n, 2) <> "~$")
 End Function
