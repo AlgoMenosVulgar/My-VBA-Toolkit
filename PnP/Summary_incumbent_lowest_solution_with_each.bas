@@ -47,6 +47,7 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
     '================================================================
     Call HeaderCell(wsSummary.Cells(HDR_ROW + 1, COL_VOL), "Volume")
     Call HeaderCell(wsSummary.Cells(HDR_ROW + 1, COL_BASE), "Baseline")
+    
     For r = 2 To lastRow - 1
         If wsPrices.Cells(r, "B").Value <> "Blank" Then
             With wsSummary.Cells(r + 1, COL_VOL)
@@ -55,9 +56,10 @@ Sub Analytics_With_Baseline_IncumbentLowestLSI_Final()
                 Call Bordered(.Cells)
             End With
         End If
+    
         If wsPrices.Cells(r, "C").Value <> "Blank" Then
             With wsSummary.Cells(r + 1, COL_BASE)
-                .Formula = "=IF(Prices!C" & r & "=" & """NA""" & ",""NA"",Prices!C" & r & "*Prices!B" & r & ")"
+                .Formula = "=IF(OR(Prices!B" & r & "=""NA"",Prices!C" & r & "=""NA""),""NA"",Prices!B" & r & "*Prices!C" & r & ")"
                 .NumberFormat = "$#,##0.00"
                 Call Bordered(.Cells)
             End With
